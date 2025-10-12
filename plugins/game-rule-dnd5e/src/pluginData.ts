@@ -1,4 +1,4 @@
-import * as z from "zod";
+import * as z from "zod/v4";
 import * as RpgDiceRoller from '@dice-roller/rpg-dice-roller';
 import type { CheckDefinition, Character } from "@/lib/state"; // Import CheckDefinition and Character
 import { back } from "@/lib/engine";
@@ -7,6 +7,7 @@ export const PlotType = z.enum(["general", "combat", "puzzle", "chase", "rolepla
 export type PlotType = z.infer<typeof PlotType>;
 
 export const CombatantSchema = z.object({
+  id: z.string(), // Character name
   characterIndex: z.number().int(), // Link to state.characters by index
   currentHp: z.number().int(),
   maxHp: z.number().int(),
@@ -20,9 +21,20 @@ export const BattleSchema = z.object({
   roundNumber: z.number().int(),
   combatants: z.array(CombatantSchema),
   combatLog: z.array(z.string()),
-  activeTurnCombatantIndex: z.number().int().optional(), // Index of the Combatant whose turn it is in the combatants array.
 });
 export type Battle = z.infer<typeof BattleSchema>;
+
+export const CombatActionSchema = z.object({
+  actorId: z.string(),
+  actionType: z.enum(["Attack", "CastSpell", "Dash", "Dodge", "Disengage", "Help", "Hide", "Ready", "Search", "UseObject", "Move", "Other"]),
+  targetId: z.string().optional(),
+  description: z.string(),
+});
+export type CombatAction = z.infer<typeof CombatActionSchema>;
+
+export const CombatRoundActionsSchema = z.array(CombatActionSchema);
+export type CombatRoundActions = z.infer<typeof CombatRoundActionsSchema>;
+
 
 /**
  * Zod schema for validating D&D character stats settings.
@@ -242,6 +254,15 @@ export const DnDClassData: DndClassData = {
 };
 
 /**
+ * Determines if a combatant can take action based on their status.
+ * @param status The current status of the combatant.
+ * @returns True if the combatant is active, false otherwise.
+ */
+export function canCombatantAct(status: Combatant['status']): boolean {
+  return status === "active";
+}
+
+/**
  * Helper function to calculate D&D 5e ability modifier.
  * @param score The ability score.
  * @returns The calculated modifier.
@@ -250,15 +271,22 @@ export function getAbilityModifier(score: number): number {
   return Math.floor((score - 10) / 2);
 }
 
+export interface CheckResult {
+  success: boolean;
+  roll: number;
+  total: number;
+  statement: string;
+}
+
 /**
- * Resolves a game rule check, utilizing rpg-dice-roller, and returns the result as a statement.
+ * Resolves a game rule check, utilizing rpg-dice-roller, and returns a structured result.
  * @param check The definition of the check to resolve.
  * @param characterStats The global Character object.
  * @param dndStats The D&D 5e specific stats for the character.
  * @param rpgDiceRoller The rpg-dice-roller instance.
- * @returns A statement describing the check's result and any consequences.
+ * @returns A CheckResult object with the outcome.
  */
-export function resolveCheck(check: CheckDefinition, characterStats: Character, dndStats: DnDStats, rpgDiceRoller: typeof RpgDiceRoller): string {
+export function resolveCheck(check: CheckDefinition, characterStats: Character, dndStats: DnDStats, rpgDiceRoller: typeof RpgDiceRoller): CheckResult {
   let abilityScore: number | undefined;
   let modifier: number = 0;
 
@@ -272,6 +300,7 @@ export function resolveCheck(check: CheckDefinition, characterStats: Character, 
     case "acrobatics":
     case "sleight of hand":
     case "stealth":
+	  case "attack": // Add attack to use dexterity
       abilityScore = dndStats.dexterity;
       break;
     case "constitution":
@@ -304,8 +333,6 @@ export function resolveCheck(check: CheckDefinition, characterStats: Character, 
       abilityScore = dndStats.dexterity;
       break;
     default:
-      // If it's a custom check type not directly mapped to an ability,
-      // try to find a modifier from the check's modifiers array.
       if (check.modifiers && check.modifiers.length > 0) {
         const primaryModifier = check.modifiers[0].toLowerCase();
         switch (primaryModifier) {
@@ -321,21 +348,31 @@ export function resolveCheck(check: CheckDefinition, characterStats: Character, 
   }
 
   if (abilityScore === undefined) {
-    return `Check for ${check.type} could not be resolved: No relevant ability score found.`;
+    return {
+      success: false,
+      roll: 0,
+      total: 0,
+      statement: `Check for ${check.type} could not be resolved: No relevant ability score found.`
+    };
   }
 
   modifier = getAbilityModifier(abilityScore);
 
-  // Roll a d20
   const roll = new rpgDiceRoller.DiceRoll('1d20').total;
   const total = roll + modifier;
+  const success = total >= check.difficultyClass;
 
   let resultStatement: string;
-  if (total >= check.difficultyClass) {
+  if (success) {
     resultStatement = `${characterStats.name} successfully passed the ${check.type} check (DC ${check.difficultyClass}) with a roll of ${roll} and a total of ${total}.`;
   } else {
     resultStatement = `${characterStats.name} failed the ${check.type} check (DC ${check.difficultyClass}) with a roll of ${roll} and a total of ${total}.`;
   }
 
-  return resultStatement;
+  return {
+    success,
+    roll,
+    total,
+    statement: resultStatement,
+  };
 }

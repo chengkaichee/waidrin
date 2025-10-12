@@ -22,4521 +22,6 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// ../../node_modules/zod/dist/esm/v3/helpers/util.js
-var util;
-(function(util2) {
-  util2.assertEqual = (_) => {
-  };
-  function assertIs2(_arg) {
-  }
-  util2.assertIs = assertIs2;
-  function assertNever2(_x) {
-    throw new Error();
-  }
-  util2.assertNever = assertNever2;
-  util2.arrayToEnum = (items) => {
-    const obj = {};
-    for (const item of items) {
-      obj[item] = item;
-    }
-    return obj;
-  };
-  util2.getValidEnumValues = (obj) => {
-    const validKeys = util2.objectKeys(obj).filter((k) => typeof obj[obj[k]] !== "number");
-    const filtered = {};
-    for (const k of validKeys) {
-      filtered[k] = obj[k];
-    }
-    return util2.objectValues(filtered);
-  };
-  util2.objectValues = (obj) => {
-    return util2.objectKeys(obj).map(function(e) {
-      return obj[e];
-    });
-  };
-  util2.objectKeys = typeof Object.keys === "function" ? (obj) => Object.keys(obj) : (object2) => {
-    const keys = [];
-    for (const key in object2) {
-      if (Object.prototype.hasOwnProperty.call(object2, key)) {
-        keys.push(key);
-      }
-    }
-    return keys;
-  };
-  util2.find = (arr, checker) => {
-    for (const item of arr) {
-      if (checker(item))
-        return item;
-    }
-    return void 0;
-  };
-  util2.isInteger = typeof Number.isInteger === "function" ? (val) => Number.isInteger(val) : (val) => typeof val === "number" && Number.isFinite(val) && Math.floor(val) === val;
-  function joinValues2(array2, separator = " | ") {
-    return array2.map((val) => typeof val === "string" ? `'${val}'` : val).join(separator);
-  }
-  util2.joinValues = joinValues2;
-  util2.jsonStringifyReplacer = (_, value) => {
-    if (typeof value === "bigint") {
-      return value.toString();
-    }
-    return value;
-  };
-})(util || (util = {}));
-var objectUtil;
-(function(objectUtil2) {
-  objectUtil2.mergeShapes = (first, second) => {
-    return __spreadValues(__spreadValues({}, first), second);
-  };
-})(objectUtil || (objectUtil = {}));
-var ZodParsedType = util.arrayToEnum([
-  "string",
-  "nan",
-  "number",
-  "integer",
-  "float",
-  "boolean",
-  "date",
-  "bigint",
-  "symbol",
-  "function",
-  "undefined",
-  "null",
-  "array",
-  "object",
-  "unknown",
-  "promise",
-  "void",
-  "never",
-  "map",
-  "set"
-]);
-var getParsedType = (data) => {
-  const t = typeof data;
-  switch (t) {
-    case "undefined":
-      return ZodParsedType.undefined;
-    case "string":
-      return ZodParsedType.string;
-    case "number":
-      return Number.isNaN(data) ? ZodParsedType.nan : ZodParsedType.number;
-    case "boolean":
-      return ZodParsedType.boolean;
-    case "function":
-      return ZodParsedType.function;
-    case "bigint":
-      return ZodParsedType.bigint;
-    case "symbol":
-      return ZodParsedType.symbol;
-    case "object":
-      if (Array.isArray(data)) {
-        return ZodParsedType.array;
-      }
-      if (data === null) {
-        return ZodParsedType.null;
-      }
-      if (data.then && typeof data.then === "function" && data.catch && typeof data.catch === "function") {
-        return ZodParsedType.promise;
-      }
-      if (typeof Map !== "undefined" && data instanceof Map) {
-        return ZodParsedType.map;
-      }
-      if (typeof Set !== "undefined" && data instanceof Set) {
-        return ZodParsedType.set;
-      }
-      if (typeof Date !== "undefined" && data instanceof Date) {
-        return ZodParsedType.date;
-      }
-      return ZodParsedType.object;
-    default:
-      return ZodParsedType.unknown;
-  }
-};
-
-// ../../node_modules/zod/dist/esm/v3/ZodError.js
-var ZodIssueCode = util.arrayToEnum([
-  "invalid_type",
-  "invalid_literal",
-  "custom",
-  "invalid_union",
-  "invalid_union_discriminator",
-  "invalid_enum_value",
-  "unrecognized_keys",
-  "invalid_arguments",
-  "invalid_return_type",
-  "invalid_date",
-  "invalid_string",
-  "too_small",
-  "too_big",
-  "invalid_intersection_types",
-  "not_multiple_of",
-  "not_finite"
-]);
-var ZodError = class _ZodError extends Error {
-  get errors() {
-    return this.issues;
-  }
-  constructor(issues) {
-    super();
-    this.issues = [];
-    this.addIssue = (sub) => {
-      this.issues = [...this.issues, sub];
-    };
-    this.addIssues = (subs = []) => {
-      this.issues = [...this.issues, ...subs];
-    };
-    const actualProto = new.target.prototype;
-    if (Object.setPrototypeOf) {
-      Object.setPrototypeOf(this, actualProto);
-    } else {
-      this.__proto__ = actualProto;
-    }
-    this.name = "ZodError";
-    this.issues = issues;
-  }
-  format(_mapper) {
-    const mapper = _mapper || function(issue2) {
-      return issue2.message;
-    };
-    const fieldErrors = { _errors: [] };
-    const processError = (error39) => {
-      for (const issue2 of error39.issues) {
-        if (issue2.code === "invalid_union") {
-          issue2.unionErrors.map(processError);
-        } else if (issue2.code === "invalid_return_type") {
-          processError(issue2.returnTypeError);
-        } else if (issue2.code === "invalid_arguments") {
-          processError(issue2.argumentsError);
-        } else if (issue2.path.length === 0) {
-          fieldErrors._errors.push(mapper(issue2));
-        } else {
-          let curr = fieldErrors;
-          let i = 0;
-          while (i < issue2.path.length) {
-            const el = issue2.path[i];
-            const terminal = i === issue2.path.length - 1;
-            if (!terminal) {
-              curr[el] = curr[el] || { _errors: [] };
-            } else {
-              curr[el] = curr[el] || { _errors: [] };
-              curr[el]._errors.push(mapper(issue2));
-            }
-            curr = curr[el];
-            i++;
-          }
-        }
-      }
-    };
-    processError(this);
-    return fieldErrors;
-  }
-  static assert(value) {
-    if (!(value instanceof _ZodError)) {
-      throw new Error(`Not a ZodError: ${value}`);
-    }
-  }
-  toString() {
-    return this.message;
-  }
-  get message() {
-    return JSON.stringify(this.issues, util.jsonStringifyReplacer, 2);
-  }
-  get isEmpty() {
-    return this.issues.length === 0;
-  }
-  flatten(mapper = (issue2) => issue2.message) {
-    const fieldErrors = {};
-    const formErrors = [];
-    for (const sub of this.issues) {
-      if (sub.path.length > 0) {
-        fieldErrors[sub.path[0]] = fieldErrors[sub.path[0]] || [];
-        fieldErrors[sub.path[0]].push(mapper(sub));
-      } else {
-        formErrors.push(mapper(sub));
-      }
-    }
-    return { formErrors, fieldErrors };
-  }
-  get formErrors() {
-    return this.flatten();
-  }
-};
-ZodError.create = (issues) => {
-  const error39 = new ZodError(issues);
-  return error39;
-};
-
-// ../../node_modules/zod/dist/esm/v3/locales/en.js
-var errorMap = (issue2, _ctx) => {
-  let message;
-  switch (issue2.code) {
-    case ZodIssueCode.invalid_type:
-      if (issue2.received === ZodParsedType.undefined) {
-        message = "Required";
-      } else {
-        message = `Expected ${issue2.expected}, received ${issue2.received}`;
-      }
-      break;
-    case ZodIssueCode.invalid_literal:
-      message = `Invalid literal value, expected ${JSON.stringify(issue2.expected, util.jsonStringifyReplacer)}`;
-      break;
-    case ZodIssueCode.unrecognized_keys:
-      message = `Unrecognized key(s) in object: ${util.joinValues(issue2.keys, ", ")}`;
-      break;
-    case ZodIssueCode.invalid_union:
-      message = `Invalid input`;
-      break;
-    case ZodIssueCode.invalid_union_discriminator:
-      message = `Invalid discriminator value. Expected ${util.joinValues(issue2.options)}`;
-      break;
-    case ZodIssueCode.invalid_enum_value:
-      message = `Invalid enum value. Expected ${util.joinValues(issue2.options)}, received '${issue2.received}'`;
-      break;
-    case ZodIssueCode.invalid_arguments:
-      message = `Invalid function arguments`;
-      break;
-    case ZodIssueCode.invalid_return_type:
-      message = `Invalid function return type`;
-      break;
-    case ZodIssueCode.invalid_date:
-      message = `Invalid date`;
-      break;
-    case ZodIssueCode.invalid_string:
-      if (typeof issue2.validation === "object") {
-        if ("includes" in issue2.validation) {
-          message = `Invalid input: must include "${issue2.validation.includes}"`;
-          if (typeof issue2.validation.position === "number") {
-            message = `${message} at one or more positions greater than or equal to ${issue2.validation.position}`;
-          }
-        } else if ("startsWith" in issue2.validation) {
-          message = `Invalid input: must start with "${issue2.validation.startsWith}"`;
-        } else if ("endsWith" in issue2.validation) {
-          message = `Invalid input: must end with "${issue2.validation.endsWith}"`;
-        } else {
-          util.assertNever(issue2.validation);
-        }
-      } else if (issue2.validation !== "regex") {
-        message = `Invalid ${issue2.validation}`;
-      } else {
-        message = "Invalid";
-      }
-      break;
-    case ZodIssueCode.too_small:
-      if (issue2.type === "array")
-        message = `Array must contain ${issue2.exact ? "exactly" : issue2.inclusive ? `at least` : `more than`} ${issue2.minimum} element(s)`;
-      else if (issue2.type === "string")
-        message = `String must contain ${issue2.exact ? "exactly" : issue2.inclusive ? `at least` : `over`} ${issue2.minimum} character(s)`;
-      else if (issue2.type === "number")
-        message = `Number must be ${issue2.exact ? `exactly equal to ` : issue2.inclusive ? `greater than or equal to ` : `greater than `}${issue2.minimum}`;
-      else if (issue2.type === "date")
-        message = `Date must be ${issue2.exact ? `exactly equal to ` : issue2.inclusive ? `greater than or equal to ` : `greater than `}${new Date(Number(issue2.minimum))}`;
-      else
-        message = "Invalid input";
-      break;
-    case ZodIssueCode.too_big:
-      if (issue2.type === "array")
-        message = `Array must contain ${issue2.exact ? `exactly` : issue2.inclusive ? `at most` : `less than`} ${issue2.maximum} element(s)`;
-      else if (issue2.type === "string")
-        message = `String must contain ${issue2.exact ? `exactly` : issue2.inclusive ? `at most` : `under`} ${issue2.maximum} character(s)`;
-      else if (issue2.type === "number")
-        message = `Number must be ${issue2.exact ? `exactly` : issue2.inclusive ? `less than or equal to` : `less than`} ${issue2.maximum}`;
-      else if (issue2.type === "bigint")
-        message = `BigInt must be ${issue2.exact ? `exactly` : issue2.inclusive ? `less than or equal to` : `less than`} ${issue2.maximum}`;
-      else if (issue2.type === "date")
-        message = `Date must be ${issue2.exact ? `exactly` : issue2.inclusive ? `smaller than or equal to` : `smaller than`} ${new Date(Number(issue2.maximum))}`;
-      else
-        message = "Invalid input";
-      break;
-    case ZodIssueCode.custom:
-      message = `Invalid input`;
-      break;
-    case ZodIssueCode.invalid_intersection_types:
-      message = `Intersection results could not be merged`;
-      break;
-    case ZodIssueCode.not_multiple_of:
-      message = `Number must be a multiple of ${issue2.multipleOf}`;
-      break;
-    case ZodIssueCode.not_finite:
-      message = "Number must be finite";
-      break;
-    default:
-      message = _ctx.defaultError;
-      util.assertNever(issue2);
-  }
-  return { message };
-};
-var en_default = errorMap;
-
-// ../../node_modules/zod/dist/esm/v3/errors.js
-var overrideErrorMap = en_default;
-function getErrorMap() {
-  return overrideErrorMap;
-}
-
-// ../../node_modules/zod/dist/esm/v3/helpers/parseUtil.js
-var makeIssue = (params) => {
-  const { data, path, errorMaps, issueData } = params;
-  const fullPath = [...path, ...issueData.path || []];
-  const fullIssue = __spreadProps(__spreadValues({}, issueData), {
-    path: fullPath
-  });
-  if (issueData.message !== void 0) {
-    return __spreadProps(__spreadValues({}, issueData), {
-      path: fullPath,
-      message: issueData.message
-    });
-  }
-  let errorMessage = "";
-  const maps = errorMaps.filter((m) => !!m).slice().reverse();
-  for (const map of maps) {
-    errorMessage = map(fullIssue, { data, defaultError: errorMessage }).message;
-  }
-  return __spreadProps(__spreadValues({}, issueData), {
-    path: fullPath,
-    message: errorMessage
-  });
-};
-function addIssueToContext(ctx, issueData) {
-  const overrideMap = getErrorMap();
-  const issue2 = makeIssue({
-    issueData,
-    data: ctx.data,
-    path: ctx.path,
-    errorMaps: [
-      ctx.common.contextualErrorMap,
-      // contextual error map is first priority
-      ctx.schemaErrorMap,
-      // then schema-bound map if available
-      overrideMap,
-      // then global override map
-      overrideMap === en_default ? void 0 : en_default
-      // then global default map
-    ].filter((x) => !!x)
-  });
-  ctx.common.issues.push(issue2);
-}
-var ParseStatus = class _ParseStatus {
-  constructor() {
-    this.value = "valid";
-  }
-  dirty() {
-    if (this.value === "valid")
-      this.value = "dirty";
-  }
-  abort() {
-    if (this.value !== "aborted")
-      this.value = "aborted";
-  }
-  static mergeArray(status, results) {
-    const arrayValue = [];
-    for (const s of results) {
-      if (s.status === "aborted")
-        return INVALID;
-      if (s.status === "dirty")
-        status.dirty();
-      arrayValue.push(s.value);
-    }
-    return { status: status.value, value: arrayValue };
-  }
-  static async mergeObjectAsync(status, pairs) {
-    const syncPairs = [];
-    for (const pair of pairs) {
-      const key = await pair.key;
-      const value = await pair.value;
-      syncPairs.push({
-        key,
-        value
-      });
-    }
-    return _ParseStatus.mergeObjectSync(status, syncPairs);
-  }
-  static mergeObjectSync(status, pairs) {
-    const finalObject = {};
-    for (const pair of pairs) {
-      const { key, value } = pair;
-      if (key.status === "aborted")
-        return INVALID;
-      if (value.status === "aborted")
-        return INVALID;
-      if (key.status === "dirty")
-        status.dirty();
-      if (value.status === "dirty")
-        status.dirty();
-      if (key.value !== "__proto__" && (typeof value.value !== "undefined" || pair.alwaysSet)) {
-        finalObject[key.value] = value.value;
-      }
-    }
-    return { status: status.value, value: finalObject };
-  }
-};
-var INVALID = Object.freeze({
-  status: "aborted"
-});
-var DIRTY = (value) => ({ status: "dirty", value });
-var OK = (value) => ({ status: "valid", value });
-var isAborted = (x) => x.status === "aborted";
-var isDirty = (x) => x.status === "dirty";
-var isValid = (x) => x.status === "valid";
-var isAsync = (x) => typeof Promise !== "undefined" && x instanceof Promise;
-
-// ../../node_modules/zod/dist/esm/v3/helpers/errorUtil.js
-var errorUtil;
-(function(errorUtil2) {
-  errorUtil2.errToObj = (message) => typeof message === "string" ? { message } : message || {};
-  errorUtil2.toString = (message) => typeof message === "string" ? message : message == null ? void 0 : message.message;
-})(errorUtil || (errorUtil = {}));
-
-// ../../node_modules/zod/dist/esm/v3/types.js
-var ParseInputLazyPath = class {
-  constructor(parent, value, path, key) {
-    this._cachedPath = [];
-    this.parent = parent;
-    this.data = value;
-    this._path = path;
-    this._key = key;
-  }
-  get path() {
-    if (!this._cachedPath.length) {
-      if (Array.isArray(this._key)) {
-        this._cachedPath.push(...this._path, ...this._key);
-      } else {
-        this._cachedPath.push(...this._path, this._key);
-      }
-    }
-    return this._cachedPath;
-  }
-};
-var handleResult = (ctx, result) => {
-  if (isValid(result)) {
-    return { success: true, data: result.value };
-  } else {
-    if (!ctx.common.issues.length) {
-      throw new Error("Validation failed but no issues detected.");
-    }
-    return {
-      success: false,
-      get error() {
-        if (this._error)
-          return this._error;
-        const error39 = new ZodError(ctx.common.issues);
-        this._error = error39;
-        return this._error;
-      }
-    };
-  }
-};
-function processCreateParams(params) {
-  if (!params)
-    return {};
-  const { errorMap: errorMap2, invalid_type_error, required_error, description } = params;
-  if (errorMap2 && (invalid_type_error || required_error)) {
-    throw new Error(`Can't use "invalid_type_error" or "required_error" in conjunction with custom error map.`);
-  }
-  if (errorMap2)
-    return { errorMap: errorMap2, description };
-  const customMap = (iss, ctx) => {
-    var _a, _b;
-    const { message } = params;
-    if (iss.code === "invalid_enum_value") {
-      return { message: message != null ? message : ctx.defaultError };
-    }
-    if (typeof ctx.data === "undefined") {
-      return { message: (_a = message != null ? message : required_error) != null ? _a : ctx.defaultError };
-    }
-    if (iss.code !== "invalid_type")
-      return { message: ctx.defaultError };
-    return { message: (_b = message != null ? message : invalid_type_error) != null ? _b : ctx.defaultError };
-  };
-  return { errorMap: customMap, description };
-}
-var ZodType = class {
-  get description() {
-    return this._def.description;
-  }
-  _getType(input) {
-    return getParsedType(input.data);
-  }
-  _getOrReturnCtx(input, ctx) {
-    return ctx || {
-      common: input.parent.common,
-      data: input.data,
-      parsedType: getParsedType(input.data),
-      schemaErrorMap: this._def.errorMap,
-      path: input.path,
-      parent: input.parent
-    };
-  }
-  _processInputParams(input) {
-    return {
-      status: new ParseStatus(),
-      ctx: {
-        common: input.parent.common,
-        data: input.data,
-        parsedType: getParsedType(input.data),
-        schemaErrorMap: this._def.errorMap,
-        path: input.path,
-        parent: input.parent
-      }
-    };
-  }
-  _parseSync(input) {
-    const result = this._parse(input);
-    if (isAsync(result)) {
-      throw new Error("Synchronous parse encountered promise.");
-    }
-    return result;
-  }
-  _parseAsync(input) {
-    const result = this._parse(input);
-    return Promise.resolve(result);
-  }
-  parse(data, params) {
-    const result = this.safeParse(data, params);
-    if (result.success)
-      return result.data;
-    throw result.error;
-  }
-  safeParse(data, params) {
-    var _a;
-    const ctx = {
-      common: {
-        issues: [],
-        async: (_a = params == null ? void 0 : params.async) != null ? _a : false,
-        contextualErrorMap: params == null ? void 0 : params.errorMap
-      },
-      path: (params == null ? void 0 : params.path) || [],
-      schemaErrorMap: this._def.errorMap,
-      parent: null,
-      data,
-      parsedType: getParsedType(data)
-    };
-    const result = this._parseSync({ data, path: ctx.path, parent: ctx });
-    return handleResult(ctx, result);
-  }
-  "~validate"(data) {
-    var _a, _b;
-    const ctx = {
-      common: {
-        issues: [],
-        async: !!this["~standard"].async
-      },
-      path: [],
-      schemaErrorMap: this._def.errorMap,
-      parent: null,
-      data,
-      parsedType: getParsedType(data)
-    };
-    if (!this["~standard"].async) {
-      try {
-        const result = this._parseSync({ data, path: [], parent: ctx });
-        return isValid(result) ? {
-          value: result.value
-        } : {
-          issues: ctx.common.issues
-        };
-      } catch (err) {
-        if ((_b = (_a = err == null ? void 0 : err.message) == null ? void 0 : _a.toLowerCase()) == null ? void 0 : _b.includes("encountered")) {
-          this["~standard"].async = true;
-        }
-        ctx.common = {
-          issues: [],
-          async: true
-        };
-      }
-    }
-    return this._parseAsync({ data, path: [], parent: ctx }).then((result) => isValid(result) ? {
-      value: result.value
-    } : {
-      issues: ctx.common.issues
-    });
-  }
-  async parseAsync(data, params) {
-    const result = await this.safeParseAsync(data, params);
-    if (result.success)
-      return result.data;
-    throw result.error;
-  }
-  async safeParseAsync(data, params) {
-    const ctx = {
-      common: {
-        issues: [],
-        contextualErrorMap: params == null ? void 0 : params.errorMap,
-        async: true
-      },
-      path: (params == null ? void 0 : params.path) || [],
-      schemaErrorMap: this._def.errorMap,
-      parent: null,
-      data,
-      parsedType: getParsedType(data)
-    };
-    const maybeAsyncResult = this._parse({ data, path: ctx.path, parent: ctx });
-    const result = await (isAsync(maybeAsyncResult) ? maybeAsyncResult : Promise.resolve(maybeAsyncResult));
-    return handleResult(ctx, result);
-  }
-  refine(check2, message) {
-    const getIssueProperties = (val) => {
-      if (typeof message === "string" || typeof message === "undefined") {
-        return { message };
-      } else if (typeof message === "function") {
-        return message(val);
-      } else {
-        return message;
-      }
-    };
-    return this._refinement((val, ctx) => {
-      const result = check2(val);
-      const setError = () => ctx.addIssue(__spreadValues({
-        code: ZodIssueCode.custom
-      }, getIssueProperties(val)));
-      if (typeof Promise !== "undefined" && result instanceof Promise) {
-        return result.then((data) => {
-          if (!data) {
-            setError();
-            return false;
-          } else {
-            return true;
-          }
-        });
-      }
-      if (!result) {
-        setError();
-        return false;
-      } else {
-        return true;
-      }
-    });
-  }
-  refinement(check2, refinementData) {
-    return this._refinement((val, ctx) => {
-      if (!check2(val)) {
-        ctx.addIssue(typeof refinementData === "function" ? refinementData(val, ctx) : refinementData);
-        return false;
-      } else {
-        return true;
-      }
-    });
-  }
-  _refinement(refinement) {
-    return new ZodEffects({
-      schema: this,
-      typeName: ZodFirstPartyTypeKind.ZodEffects,
-      effect: { type: "refinement", refinement }
-    });
-  }
-  superRefine(refinement) {
-    return this._refinement(refinement);
-  }
-  constructor(def) {
-    this.spa = this.safeParseAsync;
-    this._def = def;
-    this.parse = this.parse.bind(this);
-    this.safeParse = this.safeParse.bind(this);
-    this.parseAsync = this.parseAsync.bind(this);
-    this.safeParseAsync = this.safeParseAsync.bind(this);
-    this.spa = this.spa.bind(this);
-    this.refine = this.refine.bind(this);
-    this.refinement = this.refinement.bind(this);
-    this.superRefine = this.superRefine.bind(this);
-    this.optional = this.optional.bind(this);
-    this.nullable = this.nullable.bind(this);
-    this.nullish = this.nullish.bind(this);
-    this.array = this.array.bind(this);
-    this.promise = this.promise.bind(this);
-    this.or = this.or.bind(this);
-    this.and = this.and.bind(this);
-    this.transform = this.transform.bind(this);
-    this.brand = this.brand.bind(this);
-    this.default = this.default.bind(this);
-    this.catch = this.catch.bind(this);
-    this.describe = this.describe.bind(this);
-    this.pipe = this.pipe.bind(this);
-    this.readonly = this.readonly.bind(this);
-    this.isNullable = this.isNullable.bind(this);
-    this.isOptional = this.isOptional.bind(this);
-    this["~standard"] = {
-      version: 1,
-      vendor: "zod",
-      validate: (data) => this["~validate"](data)
-    };
-  }
-  optional() {
-    return ZodOptional.create(this, this._def);
-  }
-  nullable() {
-    return ZodNullable.create(this, this._def);
-  }
-  nullish() {
-    return this.nullable().optional();
-  }
-  array() {
-    return ZodArray.create(this);
-  }
-  promise() {
-    return ZodPromise.create(this, this._def);
-  }
-  or(option) {
-    return ZodUnion.create([this, option], this._def);
-  }
-  and(incoming) {
-    return ZodIntersection.create(this, incoming, this._def);
-  }
-  transform(transform2) {
-    return new ZodEffects(__spreadProps(__spreadValues({}, processCreateParams(this._def)), {
-      schema: this,
-      typeName: ZodFirstPartyTypeKind.ZodEffects,
-      effect: { type: "transform", transform: transform2 }
-    }));
-  }
-  default(def) {
-    const defaultValueFunc = typeof def === "function" ? def : () => def;
-    return new ZodDefault(__spreadProps(__spreadValues({}, processCreateParams(this._def)), {
-      innerType: this,
-      defaultValue: defaultValueFunc,
-      typeName: ZodFirstPartyTypeKind.ZodDefault
-    }));
-  }
-  brand() {
-    return new ZodBranded(__spreadValues({
-      typeName: ZodFirstPartyTypeKind.ZodBranded,
-      type: this
-    }, processCreateParams(this._def)));
-  }
-  catch(def) {
-    const catchValueFunc = typeof def === "function" ? def : () => def;
-    return new ZodCatch(__spreadProps(__spreadValues({}, processCreateParams(this._def)), {
-      innerType: this,
-      catchValue: catchValueFunc,
-      typeName: ZodFirstPartyTypeKind.ZodCatch
-    }));
-  }
-  describe(description) {
-    const This = this.constructor;
-    return new This(__spreadProps(__spreadValues({}, this._def), {
-      description
-    }));
-  }
-  pipe(target) {
-    return ZodPipeline.create(this, target);
-  }
-  readonly() {
-    return ZodReadonly.create(this);
-  }
-  isOptional() {
-    return this.safeParse(void 0).success;
-  }
-  isNullable() {
-    return this.safeParse(null).success;
-  }
-};
-var cuidRegex = /^c[^\s-]{8,}$/i;
-var cuid2Regex = /^[0-9a-z]+$/;
-var ulidRegex = /^[0-9A-HJKMNP-TV-Z]{26}$/i;
-var uuidRegex = /^[0-9a-fA-F]{8}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{12}$/i;
-var nanoidRegex = /^[a-z0-9_-]{21}$/i;
-var jwtRegex = /^[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+\.[A-Za-z0-9-_]*$/;
-var durationRegex = /^[-+]?P(?!$)(?:(?:[-+]?\d+Y)|(?:[-+]?\d+[.,]\d+Y$))?(?:(?:[-+]?\d+M)|(?:[-+]?\d+[.,]\d+M$))?(?:(?:[-+]?\d+W)|(?:[-+]?\d+[.,]\d+W$))?(?:(?:[-+]?\d+D)|(?:[-+]?\d+[.,]\d+D$))?(?:T(?=[\d+-])(?:(?:[-+]?\d+H)|(?:[-+]?\d+[.,]\d+H$))?(?:(?:[-+]?\d+M)|(?:[-+]?\d+[.,]\d+M$))?(?:[-+]?\d+(?:[.,]\d+)?S)?)??$/;
-var emailRegex = /^(?!\.)(?!.*\.\.)([A-Z0-9_'+\-\.]*)[A-Z0-9_+-]@([A-Z0-9][A-Z0-9\-]*\.)+[A-Z]{2,}$/i;
-var _emojiRegex = `^(\\p{Extended_Pictographic}|\\p{Emoji_Component})+$`;
-var emojiRegex;
-var ipv4Regex = /^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])$/;
-var ipv4CidrRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\/(3[0-2]|[12]?[0-9])$/;
-var ipv6Regex = /^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$/;
-var ipv6CidrRegex = /^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))\/(12[0-8]|1[01][0-9]|[1-9]?[0-9])$/;
-var base64Regex = /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
-var base64urlRegex = /^([0-9a-zA-Z-_]{4})*(([0-9a-zA-Z-_]{2}(==)?)|([0-9a-zA-Z-_]{3}(=)?))?$/;
-var dateRegexSource = `((\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-((0[13578]|1[02])-(0[1-9]|[12]\\d|3[01])|(0[469]|11)-(0[1-9]|[12]\\d|30)|(02)-(0[1-9]|1\\d|2[0-8])))`;
-var dateRegex = new RegExp(`^${dateRegexSource}$`);
-function timeRegexSource(args) {
-  let secondsRegexSource = `[0-5]\\d`;
-  if (args.precision) {
-    secondsRegexSource = `${secondsRegexSource}\\.\\d{${args.precision}}`;
-  } else if (args.precision == null) {
-    secondsRegexSource = `${secondsRegexSource}(\\.\\d+)?`;
-  }
-  const secondsQuantifier = args.precision ? "+" : "?";
-  return `([01]\\d|2[0-3]):[0-5]\\d(:${secondsRegexSource})${secondsQuantifier}`;
-}
-function timeRegex(args) {
-  return new RegExp(`^${timeRegexSource(args)}$`);
-}
-function datetimeRegex(args) {
-  let regex = `${dateRegexSource}T${timeRegexSource(args)}`;
-  const opts = [];
-  opts.push(args.local ? `Z?` : `Z`);
-  if (args.offset)
-    opts.push(`([+-]\\d{2}:?\\d{2})`);
-  regex = `${regex}(${opts.join("|")})`;
-  return new RegExp(`^${regex}$`);
-}
-function isValidIP(ip, version2) {
-  if ((version2 === "v4" || !version2) && ipv4Regex.test(ip)) {
-    return true;
-  }
-  if ((version2 === "v6" || !version2) && ipv6Regex.test(ip)) {
-    return true;
-  }
-  return false;
-}
-function isValidJWT(jwt, alg) {
-  if (!jwtRegex.test(jwt))
-    return false;
-  try {
-    const [header] = jwt.split(".");
-    const base642 = header.replace(/-/g, "+").replace(/_/g, "/").padEnd(header.length + (4 - header.length % 4) % 4, "=");
-    const decoded = JSON.parse(atob(base642));
-    if (typeof decoded !== "object" || decoded === null)
-      return false;
-    if ("typ" in decoded && (decoded == null ? void 0 : decoded.typ) !== "JWT")
-      return false;
-    if (!decoded.alg)
-      return false;
-    if (alg && decoded.alg !== alg)
-      return false;
-    return true;
-  } catch (e) {
-    return false;
-  }
-}
-function isValidCidr(ip, version2) {
-  if ((version2 === "v4" || !version2) && ipv4CidrRegex.test(ip)) {
-    return true;
-  }
-  if ((version2 === "v6" || !version2) && ipv6CidrRegex.test(ip)) {
-    return true;
-  }
-  return false;
-}
-var ZodString = class _ZodString2 extends ZodType {
-  _parse(input) {
-    if (this._def.coerce) {
-      input.data = String(input.data);
-    }
-    const parsedType3 = this._getType(input);
-    if (parsedType3 !== ZodParsedType.string) {
-      const ctx2 = this._getOrReturnCtx(input);
-      addIssueToContext(ctx2, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.string,
-        received: ctx2.parsedType
-      });
-      return INVALID;
-    }
-    const status = new ParseStatus();
-    let ctx = void 0;
-    for (const check2 of this._def.checks) {
-      if (check2.kind === "min") {
-        if (input.data.length < check2.value) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.too_small,
-            minimum: check2.value,
-            type: "string",
-            inclusive: true,
-            exact: false,
-            message: check2.message
-          });
-          status.dirty();
-        }
-      } else if (check2.kind === "max") {
-        if (input.data.length > check2.value) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.too_big,
-            maximum: check2.value,
-            type: "string",
-            inclusive: true,
-            exact: false,
-            message: check2.message
-          });
-          status.dirty();
-        }
-      } else if (check2.kind === "length") {
-        const tooBig = input.data.length > check2.value;
-        const tooSmall = input.data.length < check2.value;
-        if (tooBig || tooSmall) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          if (tooBig) {
-            addIssueToContext(ctx, {
-              code: ZodIssueCode.too_big,
-              maximum: check2.value,
-              type: "string",
-              inclusive: true,
-              exact: true,
-              message: check2.message
-            });
-          } else if (tooSmall) {
-            addIssueToContext(ctx, {
-              code: ZodIssueCode.too_small,
-              minimum: check2.value,
-              type: "string",
-              inclusive: true,
-              exact: true,
-              message: check2.message
-            });
-          }
-          status.dirty();
-        }
-      } else if (check2.kind === "email") {
-        if (!emailRegex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            validation: "email",
-            code: ZodIssueCode.invalid_string,
-            message: check2.message
-          });
-          status.dirty();
-        }
-      } else if (check2.kind === "emoji") {
-        if (!emojiRegex) {
-          emojiRegex = new RegExp(_emojiRegex, "u");
-        }
-        if (!emojiRegex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            validation: "emoji",
-            code: ZodIssueCode.invalid_string,
-            message: check2.message
-          });
-          status.dirty();
-        }
-      } else if (check2.kind === "uuid") {
-        if (!uuidRegex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            validation: "uuid",
-            code: ZodIssueCode.invalid_string,
-            message: check2.message
-          });
-          status.dirty();
-        }
-      } else if (check2.kind === "nanoid") {
-        if (!nanoidRegex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            validation: "nanoid",
-            code: ZodIssueCode.invalid_string,
-            message: check2.message
-          });
-          status.dirty();
-        }
-      } else if (check2.kind === "cuid") {
-        if (!cuidRegex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            validation: "cuid",
-            code: ZodIssueCode.invalid_string,
-            message: check2.message
-          });
-          status.dirty();
-        }
-      } else if (check2.kind === "cuid2") {
-        if (!cuid2Regex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            validation: "cuid2",
-            code: ZodIssueCode.invalid_string,
-            message: check2.message
-          });
-          status.dirty();
-        }
-      } else if (check2.kind === "ulid") {
-        if (!ulidRegex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            validation: "ulid",
-            code: ZodIssueCode.invalid_string,
-            message: check2.message
-          });
-          status.dirty();
-        }
-      } else if (check2.kind === "url") {
-        try {
-          new URL(input.data);
-        } catch (e) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            validation: "url",
-            code: ZodIssueCode.invalid_string,
-            message: check2.message
-          });
-          status.dirty();
-        }
-      } else if (check2.kind === "regex") {
-        check2.regex.lastIndex = 0;
-        const testResult = check2.regex.test(input.data);
-        if (!testResult) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            validation: "regex",
-            code: ZodIssueCode.invalid_string,
-            message: check2.message
-          });
-          status.dirty();
-        }
-      } else if (check2.kind === "trim") {
-        input.data = input.data.trim();
-      } else if (check2.kind === "includes") {
-        if (!input.data.includes(check2.value, check2.position)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.invalid_string,
-            validation: { includes: check2.value, position: check2.position },
-            message: check2.message
-          });
-          status.dirty();
-        }
-      } else if (check2.kind === "toLowerCase") {
-        input.data = input.data.toLowerCase();
-      } else if (check2.kind === "toUpperCase") {
-        input.data = input.data.toUpperCase();
-      } else if (check2.kind === "startsWith") {
-        if (!input.data.startsWith(check2.value)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.invalid_string,
-            validation: { startsWith: check2.value },
-            message: check2.message
-          });
-          status.dirty();
-        }
-      } else if (check2.kind === "endsWith") {
-        if (!input.data.endsWith(check2.value)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.invalid_string,
-            validation: { endsWith: check2.value },
-            message: check2.message
-          });
-          status.dirty();
-        }
-      } else if (check2.kind === "datetime") {
-        const regex = datetimeRegex(check2);
-        if (!regex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.invalid_string,
-            validation: "datetime",
-            message: check2.message
-          });
-          status.dirty();
-        }
-      } else if (check2.kind === "date") {
-        const regex = dateRegex;
-        if (!regex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.invalid_string,
-            validation: "date",
-            message: check2.message
-          });
-          status.dirty();
-        }
-      } else if (check2.kind === "time") {
-        const regex = timeRegex(check2);
-        if (!regex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.invalid_string,
-            validation: "time",
-            message: check2.message
-          });
-          status.dirty();
-        }
-      } else if (check2.kind === "duration") {
-        if (!durationRegex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            validation: "duration",
-            code: ZodIssueCode.invalid_string,
-            message: check2.message
-          });
-          status.dirty();
-        }
-      } else if (check2.kind === "ip") {
-        if (!isValidIP(input.data, check2.version)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            validation: "ip",
-            code: ZodIssueCode.invalid_string,
-            message: check2.message
-          });
-          status.dirty();
-        }
-      } else if (check2.kind === "jwt") {
-        if (!isValidJWT(input.data, check2.alg)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            validation: "jwt",
-            code: ZodIssueCode.invalid_string,
-            message: check2.message
-          });
-          status.dirty();
-        }
-      } else if (check2.kind === "cidr") {
-        if (!isValidCidr(input.data, check2.version)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            validation: "cidr",
-            code: ZodIssueCode.invalid_string,
-            message: check2.message
-          });
-          status.dirty();
-        }
-      } else if (check2.kind === "base64") {
-        if (!base64Regex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            validation: "base64",
-            code: ZodIssueCode.invalid_string,
-            message: check2.message
-          });
-          status.dirty();
-        }
-      } else if (check2.kind === "base64url") {
-        if (!base64urlRegex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            validation: "base64url",
-            code: ZodIssueCode.invalid_string,
-            message: check2.message
-          });
-          status.dirty();
-        }
-      } else {
-        util.assertNever(check2);
-      }
-    }
-    return { status: status.value, value: input.data };
-  }
-  _regex(regex, validation, message) {
-    return this.refinement((data) => regex.test(data), __spreadValues({
-      validation,
-      code: ZodIssueCode.invalid_string
-    }, errorUtil.errToObj(message)));
-  }
-  _addCheck(check2) {
-    return new _ZodString2(__spreadProps(__spreadValues({}, this._def), {
-      checks: [...this._def.checks, check2]
-    }));
-  }
-  email(message) {
-    return this._addCheck(__spreadValues({ kind: "email" }, errorUtil.errToObj(message)));
-  }
-  url(message) {
-    return this._addCheck(__spreadValues({ kind: "url" }, errorUtil.errToObj(message)));
-  }
-  emoji(message) {
-    return this._addCheck(__spreadValues({ kind: "emoji" }, errorUtil.errToObj(message)));
-  }
-  uuid(message) {
-    return this._addCheck(__spreadValues({ kind: "uuid" }, errorUtil.errToObj(message)));
-  }
-  nanoid(message) {
-    return this._addCheck(__spreadValues({ kind: "nanoid" }, errorUtil.errToObj(message)));
-  }
-  cuid(message) {
-    return this._addCheck(__spreadValues({ kind: "cuid" }, errorUtil.errToObj(message)));
-  }
-  cuid2(message) {
-    return this._addCheck(__spreadValues({ kind: "cuid2" }, errorUtil.errToObj(message)));
-  }
-  ulid(message) {
-    return this._addCheck(__spreadValues({ kind: "ulid" }, errorUtil.errToObj(message)));
-  }
-  base64(message) {
-    return this._addCheck(__spreadValues({ kind: "base64" }, errorUtil.errToObj(message)));
-  }
-  base64url(message) {
-    return this._addCheck(__spreadValues({
-      kind: "base64url"
-    }, errorUtil.errToObj(message)));
-  }
-  jwt(options) {
-    return this._addCheck(__spreadValues({ kind: "jwt" }, errorUtil.errToObj(options)));
-  }
-  ip(options) {
-    return this._addCheck(__spreadValues({ kind: "ip" }, errorUtil.errToObj(options)));
-  }
-  cidr(options) {
-    return this._addCheck(__spreadValues({ kind: "cidr" }, errorUtil.errToObj(options)));
-  }
-  datetime(options) {
-    var _a, _b;
-    if (typeof options === "string") {
-      return this._addCheck({
-        kind: "datetime",
-        precision: null,
-        offset: false,
-        local: false,
-        message: options
-      });
-    }
-    return this._addCheck(__spreadValues({
-      kind: "datetime",
-      precision: typeof (options == null ? void 0 : options.precision) === "undefined" ? null : options == null ? void 0 : options.precision,
-      offset: (_a = options == null ? void 0 : options.offset) != null ? _a : false,
-      local: (_b = options == null ? void 0 : options.local) != null ? _b : false
-    }, errorUtil.errToObj(options == null ? void 0 : options.message)));
-  }
-  date(message) {
-    return this._addCheck({ kind: "date", message });
-  }
-  time(options) {
-    if (typeof options === "string") {
-      return this._addCheck({
-        kind: "time",
-        precision: null,
-        message: options
-      });
-    }
-    return this._addCheck(__spreadValues({
-      kind: "time",
-      precision: typeof (options == null ? void 0 : options.precision) === "undefined" ? null : options == null ? void 0 : options.precision
-    }, errorUtil.errToObj(options == null ? void 0 : options.message)));
-  }
-  duration(message) {
-    return this._addCheck(__spreadValues({ kind: "duration" }, errorUtil.errToObj(message)));
-  }
-  regex(regex, message) {
-    return this._addCheck(__spreadValues({
-      kind: "regex",
-      regex
-    }, errorUtil.errToObj(message)));
-  }
-  includes(value, options) {
-    return this._addCheck(__spreadValues({
-      kind: "includes",
-      value,
-      position: options == null ? void 0 : options.position
-    }, errorUtil.errToObj(options == null ? void 0 : options.message)));
-  }
-  startsWith(value, message) {
-    return this._addCheck(__spreadValues({
-      kind: "startsWith",
-      value
-    }, errorUtil.errToObj(message)));
-  }
-  endsWith(value, message) {
-    return this._addCheck(__spreadValues({
-      kind: "endsWith",
-      value
-    }, errorUtil.errToObj(message)));
-  }
-  min(minLength, message) {
-    return this._addCheck(__spreadValues({
-      kind: "min",
-      value: minLength
-    }, errorUtil.errToObj(message)));
-  }
-  max(maxLength, message) {
-    return this._addCheck(__spreadValues({
-      kind: "max",
-      value: maxLength
-    }, errorUtil.errToObj(message)));
-  }
-  length(len, message) {
-    return this._addCheck(__spreadValues({
-      kind: "length",
-      value: len
-    }, errorUtil.errToObj(message)));
-  }
-  /**
-   * Equivalent to `.min(1)`
-   */
-  nonempty(message) {
-    return this.min(1, errorUtil.errToObj(message));
-  }
-  trim() {
-    return new _ZodString2(__spreadProps(__spreadValues({}, this._def), {
-      checks: [...this._def.checks, { kind: "trim" }]
-    }));
-  }
-  toLowerCase() {
-    return new _ZodString2(__spreadProps(__spreadValues({}, this._def), {
-      checks: [...this._def.checks, { kind: "toLowerCase" }]
-    }));
-  }
-  toUpperCase() {
-    return new _ZodString2(__spreadProps(__spreadValues({}, this._def), {
-      checks: [...this._def.checks, { kind: "toUpperCase" }]
-    }));
-  }
-  get isDatetime() {
-    return !!this._def.checks.find((ch) => ch.kind === "datetime");
-  }
-  get isDate() {
-    return !!this._def.checks.find((ch) => ch.kind === "date");
-  }
-  get isTime() {
-    return !!this._def.checks.find((ch) => ch.kind === "time");
-  }
-  get isDuration() {
-    return !!this._def.checks.find((ch) => ch.kind === "duration");
-  }
-  get isEmail() {
-    return !!this._def.checks.find((ch) => ch.kind === "email");
-  }
-  get isURL() {
-    return !!this._def.checks.find((ch) => ch.kind === "url");
-  }
-  get isEmoji() {
-    return !!this._def.checks.find((ch) => ch.kind === "emoji");
-  }
-  get isUUID() {
-    return !!this._def.checks.find((ch) => ch.kind === "uuid");
-  }
-  get isNANOID() {
-    return !!this._def.checks.find((ch) => ch.kind === "nanoid");
-  }
-  get isCUID() {
-    return !!this._def.checks.find((ch) => ch.kind === "cuid");
-  }
-  get isCUID2() {
-    return !!this._def.checks.find((ch) => ch.kind === "cuid2");
-  }
-  get isULID() {
-    return !!this._def.checks.find((ch) => ch.kind === "ulid");
-  }
-  get isIP() {
-    return !!this._def.checks.find((ch) => ch.kind === "ip");
-  }
-  get isCIDR() {
-    return !!this._def.checks.find((ch) => ch.kind === "cidr");
-  }
-  get isBase64() {
-    return !!this._def.checks.find((ch) => ch.kind === "base64");
-  }
-  get isBase64url() {
-    return !!this._def.checks.find((ch) => ch.kind === "base64url");
-  }
-  get minLength() {
-    let min = null;
-    for (const ch of this._def.checks) {
-      if (ch.kind === "min") {
-        if (min === null || ch.value > min)
-          min = ch.value;
-      }
-    }
-    return min;
-  }
-  get maxLength() {
-    let max = null;
-    for (const ch of this._def.checks) {
-      if (ch.kind === "max") {
-        if (max === null || ch.value < max)
-          max = ch.value;
-      }
-    }
-    return max;
-  }
-};
-ZodString.create = (params) => {
-  var _a;
-  return new ZodString(__spreadValues({
-    checks: [],
-    typeName: ZodFirstPartyTypeKind.ZodString,
-    coerce: (_a = params == null ? void 0 : params.coerce) != null ? _a : false
-  }, processCreateParams(params)));
-};
-function floatSafeRemainder(val, step) {
-  const valDecCount = (val.toString().split(".")[1] || "").length;
-  const stepDecCount = (step.toString().split(".")[1] || "").length;
-  const decCount = valDecCount > stepDecCount ? valDecCount : stepDecCount;
-  const valInt = Number.parseInt(val.toFixed(decCount).replace(".", ""));
-  const stepInt = Number.parseInt(step.toFixed(decCount).replace(".", ""));
-  return valInt % stepInt / 10 ** decCount;
-}
-var ZodNumber = class _ZodNumber extends ZodType {
-  constructor() {
-    super(...arguments);
-    this.min = this.gte;
-    this.max = this.lte;
-    this.step = this.multipleOf;
-  }
-  _parse(input) {
-    if (this._def.coerce) {
-      input.data = Number(input.data);
-    }
-    const parsedType3 = this._getType(input);
-    if (parsedType3 !== ZodParsedType.number) {
-      const ctx2 = this._getOrReturnCtx(input);
-      addIssueToContext(ctx2, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.number,
-        received: ctx2.parsedType
-      });
-      return INVALID;
-    }
-    let ctx = void 0;
-    const status = new ParseStatus();
-    for (const check2 of this._def.checks) {
-      if (check2.kind === "int") {
-        if (!util.isInteger(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.invalid_type,
-            expected: "integer",
-            received: "float",
-            message: check2.message
-          });
-          status.dirty();
-        }
-      } else if (check2.kind === "min") {
-        const tooSmall = check2.inclusive ? input.data < check2.value : input.data <= check2.value;
-        if (tooSmall) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.too_small,
-            minimum: check2.value,
-            type: "number",
-            inclusive: check2.inclusive,
-            exact: false,
-            message: check2.message
-          });
-          status.dirty();
-        }
-      } else if (check2.kind === "max") {
-        const tooBig = check2.inclusive ? input.data > check2.value : input.data >= check2.value;
-        if (tooBig) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.too_big,
-            maximum: check2.value,
-            type: "number",
-            inclusive: check2.inclusive,
-            exact: false,
-            message: check2.message
-          });
-          status.dirty();
-        }
-      } else if (check2.kind === "multipleOf") {
-        if (floatSafeRemainder(input.data, check2.value) !== 0) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.not_multiple_of,
-            multipleOf: check2.value,
-            message: check2.message
-          });
-          status.dirty();
-        }
-      } else if (check2.kind === "finite") {
-        if (!Number.isFinite(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.not_finite,
-            message: check2.message
-          });
-          status.dirty();
-        }
-      } else {
-        util.assertNever(check2);
-      }
-    }
-    return { status: status.value, value: input.data };
-  }
-  gte(value, message) {
-    return this.setLimit("min", value, true, errorUtil.toString(message));
-  }
-  gt(value, message) {
-    return this.setLimit("min", value, false, errorUtil.toString(message));
-  }
-  lte(value, message) {
-    return this.setLimit("max", value, true, errorUtil.toString(message));
-  }
-  lt(value, message) {
-    return this.setLimit("max", value, false, errorUtil.toString(message));
-  }
-  setLimit(kind, value, inclusive, message) {
-    return new _ZodNumber(__spreadProps(__spreadValues({}, this._def), {
-      checks: [
-        ...this._def.checks,
-        {
-          kind,
-          value,
-          inclusive,
-          message: errorUtil.toString(message)
-        }
-      ]
-    }));
-  }
-  _addCheck(check2) {
-    return new _ZodNumber(__spreadProps(__spreadValues({}, this._def), {
-      checks: [...this._def.checks, check2]
-    }));
-  }
-  int(message) {
-    return this._addCheck({
-      kind: "int",
-      message: errorUtil.toString(message)
-    });
-  }
-  positive(message) {
-    return this._addCheck({
-      kind: "min",
-      value: 0,
-      inclusive: false,
-      message: errorUtil.toString(message)
-    });
-  }
-  negative(message) {
-    return this._addCheck({
-      kind: "max",
-      value: 0,
-      inclusive: false,
-      message: errorUtil.toString(message)
-    });
-  }
-  nonpositive(message) {
-    return this._addCheck({
-      kind: "max",
-      value: 0,
-      inclusive: true,
-      message: errorUtil.toString(message)
-    });
-  }
-  nonnegative(message) {
-    return this._addCheck({
-      kind: "min",
-      value: 0,
-      inclusive: true,
-      message: errorUtil.toString(message)
-    });
-  }
-  multipleOf(value, message) {
-    return this._addCheck({
-      kind: "multipleOf",
-      value,
-      message: errorUtil.toString(message)
-    });
-  }
-  finite(message) {
-    return this._addCheck({
-      kind: "finite",
-      message: errorUtil.toString(message)
-    });
-  }
-  safe(message) {
-    return this._addCheck({
-      kind: "min",
-      inclusive: true,
-      value: Number.MIN_SAFE_INTEGER,
-      message: errorUtil.toString(message)
-    })._addCheck({
-      kind: "max",
-      inclusive: true,
-      value: Number.MAX_SAFE_INTEGER,
-      message: errorUtil.toString(message)
-    });
-  }
-  get minValue() {
-    let min = null;
-    for (const ch of this._def.checks) {
-      if (ch.kind === "min") {
-        if (min === null || ch.value > min)
-          min = ch.value;
-      }
-    }
-    return min;
-  }
-  get maxValue() {
-    let max = null;
-    for (const ch of this._def.checks) {
-      if (ch.kind === "max") {
-        if (max === null || ch.value < max)
-          max = ch.value;
-      }
-    }
-    return max;
-  }
-  get isInt() {
-    return !!this._def.checks.find((ch) => ch.kind === "int" || ch.kind === "multipleOf" && util.isInteger(ch.value));
-  }
-  get isFinite() {
-    let max = null;
-    let min = null;
-    for (const ch of this._def.checks) {
-      if (ch.kind === "finite" || ch.kind === "int" || ch.kind === "multipleOf") {
-        return true;
-      } else if (ch.kind === "min") {
-        if (min === null || ch.value > min)
-          min = ch.value;
-      } else if (ch.kind === "max") {
-        if (max === null || ch.value < max)
-          max = ch.value;
-      }
-    }
-    return Number.isFinite(min) && Number.isFinite(max);
-  }
-};
-ZodNumber.create = (params) => {
-  return new ZodNumber(__spreadValues({
-    checks: [],
-    typeName: ZodFirstPartyTypeKind.ZodNumber,
-    coerce: (params == null ? void 0 : params.coerce) || false
-  }, processCreateParams(params)));
-};
-var ZodBigInt = class _ZodBigInt extends ZodType {
-  constructor() {
-    super(...arguments);
-    this.min = this.gte;
-    this.max = this.lte;
-  }
-  _parse(input) {
-    if (this._def.coerce) {
-      try {
-        input.data = BigInt(input.data);
-      } catch (e) {
-        return this._getInvalidInput(input);
-      }
-    }
-    const parsedType3 = this._getType(input);
-    if (parsedType3 !== ZodParsedType.bigint) {
-      return this._getInvalidInput(input);
-    }
-    let ctx = void 0;
-    const status = new ParseStatus();
-    for (const check2 of this._def.checks) {
-      if (check2.kind === "min") {
-        const tooSmall = check2.inclusive ? input.data < check2.value : input.data <= check2.value;
-        if (tooSmall) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.too_small,
-            type: "bigint",
-            minimum: check2.value,
-            inclusive: check2.inclusive,
-            message: check2.message
-          });
-          status.dirty();
-        }
-      } else if (check2.kind === "max") {
-        const tooBig = check2.inclusive ? input.data > check2.value : input.data >= check2.value;
-        if (tooBig) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.too_big,
-            type: "bigint",
-            maximum: check2.value,
-            inclusive: check2.inclusive,
-            message: check2.message
-          });
-          status.dirty();
-        }
-      } else if (check2.kind === "multipleOf") {
-        if (input.data % check2.value !== BigInt(0)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.not_multiple_of,
-            multipleOf: check2.value,
-            message: check2.message
-          });
-          status.dirty();
-        }
-      } else {
-        util.assertNever(check2);
-      }
-    }
-    return { status: status.value, value: input.data };
-  }
-  _getInvalidInput(input) {
-    const ctx = this._getOrReturnCtx(input);
-    addIssueToContext(ctx, {
-      code: ZodIssueCode.invalid_type,
-      expected: ZodParsedType.bigint,
-      received: ctx.parsedType
-    });
-    return INVALID;
-  }
-  gte(value, message) {
-    return this.setLimit("min", value, true, errorUtil.toString(message));
-  }
-  gt(value, message) {
-    return this.setLimit("min", value, false, errorUtil.toString(message));
-  }
-  lte(value, message) {
-    return this.setLimit("max", value, true, errorUtil.toString(message));
-  }
-  lt(value, message) {
-    return this.setLimit("max", value, false, errorUtil.toString(message));
-  }
-  setLimit(kind, value, inclusive, message) {
-    return new _ZodBigInt(__spreadProps(__spreadValues({}, this._def), {
-      checks: [
-        ...this._def.checks,
-        {
-          kind,
-          value,
-          inclusive,
-          message: errorUtil.toString(message)
-        }
-      ]
-    }));
-  }
-  _addCheck(check2) {
-    return new _ZodBigInt(__spreadProps(__spreadValues({}, this._def), {
-      checks: [...this._def.checks, check2]
-    }));
-  }
-  positive(message) {
-    return this._addCheck({
-      kind: "min",
-      value: BigInt(0),
-      inclusive: false,
-      message: errorUtil.toString(message)
-    });
-  }
-  negative(message) {
-    return this._addCheck({
-      kind: "max",
-      value: BigInt(0),
-      inclusive: false,
-      message: errorUtil.toString(message)
-    });
-  }
-  nonpositive(message) {
-    return this._addCheck({
-      kind: "max",
-      value: BigInt(0),
-      inclusive: true,
-      message: errorUtil.toString(message)
-    });
-  }
-  nonnegative(message) {
-    return this._addCheck({
-      kind: "min",
-      value: BigInt(0),
-      inclusive: true,
-      message: errorUtil.toString(message)
-    });
-  }
-  multipleOf(value, message) {
-    return this._addCheck({
-      kind: "multipleOf",
-      value,
-      message: errorUtil.toString(message)
-    });
-  }
-  get minValue() {
-    let min = null;
-    for (const ch of this._def.checks) {
-      if (ch.kind === "min") {
-        if (min === null || ch.value > min)
-          min = ch.value;
-      }
-    }
-    return min;
-  }
-  get maxValue() {
-    let max = null;
-    for (const ch of this._def.checks) {
-      if (ch.kind === "max") {
-        if (max === null || ch.value < max)
-          max = ch.value;
-      }
-    }
-    return max;
-  }
-};
-ZodBigInt.create = (params) => {
-  var _a;
-  return new ZodBigInt(__spreadValues({
-    checks: [],
-    typeName: ZodFirstPartyTypeKind.ZodBigInt,
-    coerce: (_a = params == null ? void 0 : params.coerce) != null ? _a : false
-  }, processCreateParams(params)));
-};
-var ZodBoolean = class extends ZodType {
-  _parse(input) {
-    if (this._def.coerce) {
-      input.data = Boolean(input.data);
-    }
-    const parsedType3 = this._getType(input);
-    if (parsedType3 !== ZodParsedType.boolean) {
-      const ctx = this._getOrReturnCtx(input);
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.boolean,
-        received: ctx.parsedType
-      });
-      return INVALID;
-    }
-    return OK(input.data);
-  }
-};
-ZodBoolean.create = (params) => {
-  return new ZodBoolean(__spreadValues({
-    typeName: ZodFirstPartyTypeKind.ZodBoolean,
-    coerce: (params == null ? void 0 : params.coerce) || false
-  }, processCreateParams(params)));
-};
-var ZodDate = class _ZodDate extends ZodType {
-  _parse(input) {
-    if (this._def.coerce) {
-      input.data = new Date(input.data);
-    }
-    const parsedType3 = this._getType(input);
-    if (parsedType3 !== ZodParsedType.date) {
-      const ctx2 = this._getOrReturnCtx(input);
-      addIssueToContext(ctx2, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.date,
-        received: ctx2.parsedType
-      });
-      return INVALID;
-    }
-    if (Number.isNaN(input.data.getTime())) {
-      const ctx2 = this._getOrReturnCtx(input);
-      addIssueToContext(ctx2, {
-        code: ZodIssueCode.invalid_date
-      });
-      return INVALID;
-    }
-    const status = new ParseStatus();
-    let ctx = void 0;
-    for (const check2 of this._def.checks) {
-      if (check2.kind === "min") {
-        if (input.data.getTime() < check2.value) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.too_small,
-            message: check2.message,
-            inclusive: true,
-            exact: false,
-            minimum: check2.value,
-            type: "date"
-          });
-          status.dirty();
-        }
-      } else if (check2.kind === "max") {
-        if (input.data.getTime() > check2.value) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.too_big,
-            message: check2.message,
-            inclusive: true,
-            exact: false,
-            maximum: check2.value,
-            type: "date"
-          });
-          status.dirty();
-        }
-      } else {
-        util.assertNever(check2);
-      }
-    }
-    return {
-      status: status.value,
-      value: new Date(input.data.getTime())
-    };
-  }
-  _addCheck(check2) {
-    return new _ZodDate(__spreadProps(__spreadValues({}, this._def), {
-      checks: [...this._def.checks, check2]
-    }));
-  }
-  min(minDate, message) {
-    return this._addCheck({
-      kind: "min",
-      value: minDate.getTime(),
-      message: errorUtil.toString(message)
-    });
-  }
-  max(maxDate, message) {
-    return this._addCheck({
-      kind: "max",
-      value: maxDate.getTime(),
-      message: errorUtil.toString(message)
-    });
-  }
-  get minDate() {
-    let min = null;
-    for (const ch of this._def.checks) {
-      if (ch.kind === "min") {
-        if (min === null || ch.value > min)
-          min = ch.value;
-      }
-    }
-    return min != null ? new Date(min) : null;
-  }
-  get maxDate() {
-    let max = null;
-    for (const ch of this._def.checks) {
-      if (ch.kind === "max") {
-        if (max === null || ch.value < max)
-          max = ch.value;
-      }
-    }
-    return max != null ? new Date(max) : null;
-  }
-};
-ZodDate.create = (params) => {
-  return new ZodDate(__spreadValues({
-    checks: [],
-    coerce: (params == null ? void 0 : params.coerce) || false,
-    typeName: ZodFirstPartyTypeKind.ZodDate
-  }, processCreateParams(params)));
-};
-var ZodSymbol = class extends ZodType {
-  _parse(input) {
-    const parsedType3 = this._getType(input);
-    if (parsedType3 !== ZodParsedType.symbol) {
-      const ctx = this._getOrReturnCtx(input);
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.symbol,
-        received: ctx.parsedType
-      });
-      return INVALID;
-    }
-    return OK(input.data);
-  }
-};
-ZodSymbol.create = (params) => {
-  return new ZodSymbol(__spreadValues({
-    typeName: ZodFirstPartyTypeKind.ZodSymbol
-  }, processCreateParams(params)));
-};
-var ZodUndefined = class extends ZodType {
-  _parse(input) {
-    const parsedType3 = this._getType(input);
-    if (parsedType3 !== ZodParsedType.undefined) {
-      const ctx = this._getOrReturnCtx(input);
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.undefined,
-        received: ctx.parsedType
-      });
-      return INVALID;
-    }
-    return OK(input.data);
-  }
-};
-ZodUndefined.create = (params) => {
-  return new ZodUndefined(__spreadValues({
-    typeName: ZodFirstPartyTypeKind.ZodUndefined
-  }, processCreateParams(params)));
-};
-var ZodNull = class extends ZodType {
-  _parse(input) {
-    const parsedType3 = this._getType(input);
-    if (parsedType3 !== ZodParsedType.null) {
-      const ctx = this._getOrReturnCtx(input);
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.null,
-        received: ctx.parsedType
-      });
-      return INVALID;
-    }
-    return OK(input.data);
-  }
-};
-ZodNull.create = (params) => {
-  return new ZodNull(__spreadValues({
-    typeName: ZodFirstPartyTypeKind.ZodNull
-  }, processCreateParams(params)));
-};
-var ZodAny = class extends ZodType {
-  constructor() {
-    super(...arguments);
-    this._any = true;
-  }
-  _parse(input) {
-    return OK(input.data);
-  }
-};
-ZodAny.create = (params) => {
-  return new ZodAny(__spreadValues({
-    typeName: ZodFirstPartyTypeKind.ZodAny
-  }, processCreateParams(params)));
-};
-var ZodUnknown = class extends ZodType {
-  constructor() {
-    super(...arguments);
-    this._unknown = true;
-  }
-  _parse(input) {
-    return OK(input.data);
-  }
-};
-ZodUnknown.create = (params) => {
-  return new ZodUnknown(__spreadValues({
-    typeName: ZodFirstPartyTypeKind.ZodUnknown
-  }, processCreateParams(params)));
-};
-var ZodNever = class extends ZodType {
-  _parse(input) {
-    const ctx = this._getOrReturnCtx(input);
-    addIssueToContext(ctx, {
-      code: ZodIssueCode.invalid_type,
-      expected: ZodParsedType.never,
-      received: ctx.parsedType
-    });
-    return INVALID;
-  }
-};
-ZodNever.create = (params) => {
-  return new ZodNever(__spreadValues({
-    typeName: ZodFirstPartyTypeKind.ZodNever
-  }, processCreateParams(params)));
-};
-var ZodVoid = class extends ZodType {
-  _parse(input) {
-    const parsedType3 = this._getType(input);
-    if (parsedType3 !== ZodParsedType.undefined) {
-      const ctx = this._getOrReturnCtx(input);
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.void,
-        received: ctx.parsedType
-      });
-      return INVALID;
-    }
-    return OK(input.data);
-  }
-};
-ZodVoid.create = (params) => {
-  return new ZodVoid(__spreadValues({
-    typeName: ZodFirstPartyTypeKind.ZodVoid
-  }, processCreateParams(params)));
-};
-var ZodArray = class _ZodArray extends ZodType {
-  _parse(input) {
-    const { ctx, status } = this._processInputParams(input);
-    const def = this._def;
-    if (ctx.parsedType !== ZodParsedType.array) {
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.array,
-        received: ctx.parsedType
-      });
-      return INVALID;
-    }
-    if (def.exactLength !== null) {
-      const tooBig = ctx.data.length > def.exactLength.value;
-      const tooSmall = ctx.data.length < def.exactLength.value;
-      if (tooBig || tooSmall) {
-        addIssueToContext(ctx, {
-          code: tooBig ? ZodIssueCode.too_big : ZodIssueCode.too_small,
-          minimum: tooSmall ? def.exactLength.value : void 0,
-          maximum: tooBig ? def.exactLength.value : void 0,
-          type: "array",
-          inclusive: true,
-          exact: true,
-          message: def.exactLength.message
-        });
-        status.dirty();
-      }
-    }
-    if (def.minLength !== null) {
-      if (ctx.data.length < def.minLength.value) {
-        addIssueToContext(ctx, {
-          code: ZodIssueCode.too_small,
-          minimum: def.minLength.value,
-          type: "array",
-          inclusive: true,
-          exact: false,
-          message: def.minLength.message
-        });
-        status.dirty();
-      }
-    }
-    if (def.maxLength !== null) {
-      if (ctx.data.length > def.maxLength.value) {
-        addIssueToContext(ctx, {
-          code: ZodIssueCode.too_big,
-          maximum: def.maxLength.value,
-          type: "array",
-          inclusive: true,
-          exact: false,
-          message: def.maxLength.message
-        });
-        status.dirty();
-      }
-    }
-    if (ctx.common.async) {
-      return Promise.all([...ctx.data].map((item, i) => {
-        return def.type._parseAsync(new ParseInputLazyPath(ctx, item, ctx.path, i));
-      })).then((result2) => {
-        return ParseStatus.mergeArray(status, result2);
-      });
-    }
-    const result = [...ctx.data].map((item, i) => {
-      return def.type._parseSync(new ParseInputLazyPath(ctx, item, ctx.path, i));
-    });
-    return ParseStatus.mergeArray(status, result);
-  }
-  get element() {
-    return this._def.type;
-  }
-  min(minLength, message) {
-    return new _ZodArray(__spreadProps(__spreadValues({}, this._def), {
-      minLength: { value: minLength, message: errorUtil.toString(message) }
-    }));
-  }
-  max(maxLength, message) {
-    return new _ZodArray(__spreadProps(__spreadValues({}, this._def), {
-      maxLength: { value: maxLength, message: errorUtil.toString(message) }
-    }));
-  }
-  length(len, message) {
-    return new _ZodArray(__spreadProps(__spreadValues({}, this._def), {
-      exactLength: { value: len, message: errorUtil.toString(message) }
-    }));
-  }
-  nonempty(message) {
-    return this.min(1, message);
-  }
-};
-ZodArray.create = (schema, params) => {
-  return new ZodArray(__spreadValues({
-    type: schema,
-    minLength: null,
-    maxLength: null,
-    exactLength: null,
-    typeName: ZodFirstPartyTypeKind.ZodArray
-  }, processCreateParams(params)));
-};
-function deepPartialify(schema) {
-  if (schema instanceof ZodObject) {
-    const newShape = {};
-    for (const key in schema.shape) {
-      const fieldSchema = schema.shape[key];
-      newShape[key] = ZodOptional.create(deepPartialify(fieldSchema));
-    }
-    return new ZodObject(__spreadProps(__spreadValues({}, schema._def), {
-      shape: () => newShape
-    }));
-  } else if (schema instanceof ZodArray) {
-    return new ZodArray(__spreadProps(__spreadValues({}, schema._def), {
-      type: deepPartialify(schema.element)
-    }));
-  } else if (schema instanceof ZodOptional) {
-    return ZodOptional.create(deepPartialify(schema.unwrap()));
-  } else if (schema instanceof ZodNullable) {
-    return ZodNullable.create(deepPartialify(schema.unwrap()));
-  } else if (schema instanceof ZodTuple) {
-    return ZodTuple.create(schema.items.map((item) => deepPartialify(item)));
-  } else {
-    return schema;
-  }
-}
-var ZodObject = class _ZodObject extends ZodType {
-  constructor() {
-    super(...arguments);
-    this._cached = null;
-    this.nonstrict = this.passthrough;
-    this.augment = this.extend;
-  }
-  _getCached() {
-    if (this._cached !== null)
-      return this._cached;
-    const shape = this._def.shape();
-    const keys = util.objectKeys(shape);
-    this._cached = { shape, keys };
-    return this._cached;
-  }
-  _parse(input) {
-    const parsedType3 = this._getType(input);
-    if (parsedType3 !== ZodParsedType.object) {
-      const ctx2 = this._getOrReturnCtx(input);
-      addIssueToContext(ctx2, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.object,
-        received: ctx2.parsedType
-      });
-      return INVALID;
-    }
-    const { status, ctx } = this._processInputParams(input);
-    const { shape, keys: shapeKeys } = this._getCached();
-    const extraKeys = [];
-    if (!(this._def.catchall instanceof ZodNever && this._def.unknownKeys === "strip")) {
-      for (const key in ctx.data) {
-        if (!shapeKeys.includes(key)) {
-          extraKeys.push(key);
-        }
-      }
-    }
-    const pairs = [];
-    for (const key of shapeKeys) {
-      const keyValidator = shape[key];
-      const value = ctx.data[key];
-      pairs.push({
-        key: { status: "valid", value: key },
-        value: keyValidator._parse(new ParseInputLazyPath(ctx, value, ctx.path, key)),
-        alwaysSet: key in ctx.data
-      });
-    }
-    if (this._def.catchall instanceof ZodNever) {
-      const unknownKeys = this._def.unknownKeys;
-      if (unknownKeys === "passthrough") {
-        for (const key of extraKeys) {
-          pairs.push({
-            key: { status: "valid", value: key },
-            value: { status: "valid", value: ctx.data[key] }
-          });
-        }
-      } else if (unknownKeys === "strict") {
-        if (extraKeys.length > 0) {
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.unrecognized_keys,
-            keys: extraKeys
-          });
-          status.dirty();
-        }
-      } else if (unknownKeys === "strip") {
-      } else {
-        throw new Error(`Internal ZodObject error: invalid unknownKeys value.`);
-      }
-    } else {
-      const catchall = this._def.catchall;
-      for (const key of extraKeys) {
-        const value = ctx.data[key];
-        pairs.push({
-          key: { status: "valid", value: key },
-          value: catchall._parse(
-            new ParseInputLazyPath(ctx, value, ctx.path, key)
-            //, ctx.child(key), value, getParsedType(value)
-          ),
-          alwaysSet: key in ctx.data
-        });
-      }
-    }
-    if (ctx.common.async) {
-      return Promise.resolve().then(async () => {
-        const syncPairs = [];
-        for (const pair of pairs) {
-          const key = await pair.key;
-          const value = await pair.value;
-          syncPairs.push({
-            key,
-            value,
-            alwaysSet: pair.alwaysSet
-          });
-        }
-        return syncPairs;
-      }).then((syncPairs) => {
-        return ParseStatus.mergeObjectSync(status, syncPairs);
-      });
-    } else {
-      return ParseStatus.mergeObjectSync(status, pairs);
-    }
-  }
-  get shape() {
-    return this._def.shape();
-  }
-  strict(message) {
-    errorUtil.errToObj;
-    return new _ZodObject(__spreadValues(__spreadProps(__spreadValues({}, this._def), {
-      unknownKeys: "strict"
-    }), message !== void 0 ? {
-      errorMap: (issue2, ctx) => {
-        var _a, _b, _c, _d;
-        const defaultError = (_c = (_b = (_a = this._def).errorMap) == null ? void 0 : _b.call(_a, issue2, ctx).message) != null ? _c : ctx.defaultError;
-        if (issue2.code === "unrecognized_keys")
-          return {
-            message: (_d = errorUtil.errToObj(message).message) != null ? _d : defaultError
-          };
-        return {
-          message: defaultError
-        };
-      }
-    } : {}));
-  }
-  strip() {
-    return new _ZodObject(__spreadProps(__spreadValues({}, this._def), {
-      unknownKeys: "strip"
-    }));
-  }
-  passthrough() {
-    return new _ZodObject(__spreadProps(__spreadValues({}, this._def), {
-      unknownKeys: "passthrough"
-    }));
-  }
-  // const AugmentFactory =
-  //   <Def extends ZodObjectDef>(def: Def) =>
-  //   <Augmentation extends ZodRawShape>(
-  //     augmentation: Augmentation
-  //   ): ZodObject<
-  //     extendShape<ReturnType<Def["shape"]>, Augmentation>,
-  //     Def["unknownKeys"],
-  //     Def["catchall"]
-  //   > => {
-  //     return new ZodObject({
-  //       ...def,
-  //       shape: () => ({
-  //         ...def.shape(),
-  //         ...augmentation,
-  //       }),
-  //     }) as any;
-  //   };
-  extend(augmentation) {
-    return new _ZodObject(__spreadProps(__spreadValues({}, this._def), {
-      shape: () => __spreadValues(__spreadValues({}, this._def.shape()), augmentation)
-    }));
-  }
-  /**
-   * Prior to zod@1.0.12 there was a bug in the
-   * inferred type of merged objects. Please
-   * upgrade if you are experiencing issues.
-   */
-  merge(merging) {
-    const merged = new _ZodObject({
-      unknownKeys: merging._def.unknownKeys,
-      catchall: merging._def.catchall,
-      shape: () => __spreadValues(__spreadValues({}, this._def.shape()), merging._def.shape()),
-      typeName: ZodFirstPartyTypeKind.ZodObject
-    });
-    return merged;
-  }
-  // merge<
-  //   Incoming extends AnyZodObject,
-  //   Augmentation extends Incoming["shape"],
-  //   NewOutput extends {
-  //     [k in keyof Augmentation | keyof Output]: k extends keyof Augmentation
-  //       ? Augmentation[k]["_output"]
-  //       : k extends keyof Output
-  //       ? Output[k]
-  //       : never;
-  //   },
-  //   NewInput extends {
-  //     [k in keyof Augmentation | keyof Input]: k extends keyof Augmentation
-  //       ? Augmentation[k]["_input"]
-  //       : k extends keyof Input
-  //       ? Input[k]
-  //       : never;
-  //   }
-  // >(
-  //   merging: Incoming
-  // ): ZodObject<
-  //   extendShape<T, ReturnType<Incoming["_def"]["shape"]>>,
-  //   Incoming["_def"]["unknownKeys"],
-  //   Incoming["_def"]["catchall"],
-  //   NewOutput,
-  //   NewInput
-  // > {
-  //   const merged: any = new ZodObject({
-  //     unknownKeys: merging._def.unknownKeys,
-  //     catchall: merging._def.catchall,
-  //     shape: () =>
-  //       objectUtil.mergeShapes(this._def.shape(), merging._def.shape()),
-  //     typeName: ZodFirstPartyTypeKind.ZodObject,
-  //   }) as any;
-  //   return merged;
-  // }
-  setKey(key, schema) {
-    return this.augment({ [key]: schema });
-  }
-  // merge<Incoming extends AnyZodObject>(
-  //   merging: Incoming
-  // ): //ZodObject<T & Incoming["_shape"], UnknownKeys, Catchall> = (merging) => {
-  // ZodObject<
-  //   extendShape<T, ReturnType<Incoming["_def"]["shape"]>>,
-  //   Incoming["_def"]["unknownKeys"],
-  //   Incoming["_def"]["catchall"]
-  // > {
-  //   // const mergedShape = objectUtil.mergeShapes(
-  //   //   this._def.shape(),
-  //   //   merging._def.shape()
-  //   // );
-  //   const merged: any = new ZodObject({
-  //     unknownKeys: merging._def.unknownKeys,
-  //     catchall: merging._def.catchall,
-  //     shape: () =>
-  //       objectUtil.mergeShapes(this._def.shape(), merging._def.shape()),
-  //     typeName: ZodFirstPartyTypeKind.ZodObject,
-  //   }) as any;
-  //   return merged;
-  // }
-  catchall(index) {
-    return new _ZodObject(__spreadProps(__spreadValues({}, this._def), {
-      catchall: index
-    }));
-  }
-  pick(mask) {
-    const shape = {};
-    for (const key of util.objectKeys(mask)) {
-      if (mask[key] && this.shape[key]) {
-        shape[key] = this.shape[key];
-      }
-    }
-    return new _ZodObject(__spreadProps(__spreadValues({}, this._def), {
-      shape: () => shape
-    }));
-  }
-  omit(mask) {
-    const shape = {};
-    for (const key of util.objectKeys(this.shape)) {
-      if (!mask[key]) {
-        shape[key] = this.shape[key];
-      }
-    }
-    return new _ZodObject(__spreadProps(__spreadValues({}, this._def), {
-      shape: () => shape
-    }));
-  }
-  /**
-   * @deprecated
-   */
-  deepPartial() {
-    return deepPartialify(this);
-  }
-  partial(mask) {
-    const newShape = {};
-    for (const key of util.objectKeys(this.shape)) {
-      const fieldSchema = this.shape[key];
-      if (mask && !mask[key]) {
-        newShape[key] = fieldSchema;
-      } else {
-        newShape[key] = fieldSchema.optional();
-      }
-    }
-    return new _ZodObject(__spreadProps(__spreadValues({}, this._def), {
-      shape: () => newShape
-    }));
-  }
-  required(mask) {
-    const newShape = {};
-    for (const key of util.objectKeys(this.shape)) {
-      if (mask && !mask[key]) {
-        newShape[key] = this.shape[key];
-      } else {
-        const fieldSchema = this.shape[key];
-        let newField = fieldSchema;
-        while (newField instanceof ZodOptional) {
-          newField = newField._def.innerType;
-        }
-        newShape[key] = newField;
-      }
-    }
-    return new _ZodObject(__spreadProps(__spreadValues({}, this._def), {
-      shape: () => newShape
-    }));
-  }
-  keyof() {
-    return createZodEnum(util.objectKeys(this.shape));
-  }
-};
-ZodObject.create = (shape, params) => {
-  return new ZodObject(__spreadValues({
-    shape: () => shape,
-    unknownKeys: "strip",
-    catchall: ZodNever.create(),
-    typeName: ZodFirstPartyTypeKind.ZodObject
-  }, processCreateParams(params)));
-};
-ZodObject.strictCreate = (shape, params) => {
-  return new ZodObject(__spreadValues({
-    shape: () => shape,
-    unknownKeys: "strict",
-    catchall: ZodNever.create(),
-    typeName: ZodFirstPartyTypeKind.ZodObject
-  }, processCreateParams(params)));
-};
-ZodObject.lazycreate = (shape, params) => {
-  return new ZodObject(__spreadValues({
-    shape,
-    unknownKeys: "strip",
-    catchall: ZodNever.create(),
-    typeName: ZodFirstPartyTypeKind.ZodObject
-  }, processCreateParams(params)));
-};
-var ZodUnion = class extends ZodType {
-  _parse(input) {
-    const { ctx } = this._processInputParams(input);
-    const options = this._def.options;
-    function handleResults(results) {
-      for (const result of results) {
-        if (result.result.status === "valid") {
-          return result.result;
-        }
-      }
-      for (const result of results) {
-        if (result.result.status === "dirty") {
-          ctx.common.issues.push(...result.ctx.common.issues);
-          return result.result;
-        }
-      }
-      const unionErrors = results.map((result) => new ZodError(result.ctx.common.issues));
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_union,
-        unionErrors
-      });
-      return INVALID;
-    }
-    if (ctx.common.async) {
-      return Promise.all(options.map(async (option) => {
-        const childCtx = __spreadProps(__spreadValues({}, ctx), {
-          common: __spreadProps(__spreadValues({}, ctx.common), {
-            issues: []
-          }),
-          parent: null
-        });
-        return {
-          result: await option._parseAsync({
-            data: ctx.data,
-            path: ctx.path,
-            parent: childCtx
-          }),
-          ctx: childCtx
-        };
-      })).then(handleResults);
-    } else {
-      let dirty = void 0;
-      const issues = [];
-      for (const option of options) {
-        const childCtx = __spreadProps(__spreadValues({}, ctx), {
-          common: __spreadProps(__spreadValues({}, ctx.common), {
-            issues: []
-          }),
-          parent: null
-        });
-        const result = option._parseSync({
-          data: ctx.data,
-          path: ctx.path,
-          parent: childCtx
-        });
-        if (result.status === "valid") {
-          return result;
-        } else if (result.status === "dirty" && !dirty) {
-          dirty = { result, ctx: childCtx };
-        }
-        if (childCtx.common.issues.length) {
-          issues.push(childCtx.common.issues);
-        }
-      }
-      if (dirty) {
-        ctx.common.issues.push(...dirty.ctx.common.issues);
-        return dirty.result;
-      }
-      const unionErrors = issues.map((issues2) => new ZodError(issues2));
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_union,
-        unionErrors
-      });
-      return INVALID;
-    }
-  }
-  get options() {
-    return this._def.options;
-  }
-};
-ZodUnion.create = (types, params) => {
-  return new ZodUnion(__spreadValues({
-    options: types,
-    typeName: ZodFirstPartyTypeKind.ZodUnion
-  }, processCreateParams(params)));
-};
-var getDiscriminator = (type) => {
-  if (type instanceof ZodLazy) {
-    return getDiscriminator(type.schema);
-  } else if (type instanceof ZodEffects) {
-    return getDiscriminator(type.innerType());
-  } else if (type instanceof ZodLiteral) {
-    return [type.value];
-  } else if (type instanceof ZodEnum) {
-    return type.options;
-  } else if (type instanceof ZodNativeEnum) {
-    return util.objectValues(type.enum);
-  } else if (type instanceof ZodDefault) {
-    return getDiscriminator(type._def.innerType);
-  } else if (type instanceof ZodUndefined) {
-    return [void 0];
-  } else if (type instanceof ZodNull) {
-    return [null];
-  } else if (type instanceof ZodOptional) {
-    return [void 0, ...getDiscriminator(type.unwrap())];
-  } else if (type instanceof ZodNullable) {
-    return [null, ...getDiscriminator(type.unwrap())];
-  } else if (type instanceof ZodBranded) {
-    return getDiscriminator(type.unwrap());
-  } else if (type instanceof ZodReadonly) {
-    return getDiscriminator(type.unwrap());
-  } else if (type instanceof ZodCatch) {
-    return getDiscriminator(type._def.innerType);
-  } else {
-    return [];
-  }
-};
-var ZodDiscriminatedUnion = class _ZodDiscriminatedUnion extends ZodType {
-  _parse(input) {
-    const { ctx } = this._processInputParams(input);
-    if (ctx.parsedType !== ZodParsedType.object) {
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.object,
-        received: ctx.parsedType
-      });
-      return INVALID;
-    }
-    const discriminator = this.discriminator;
-    const discriminatorValue = ctx.data[discriminator];
-    const option = this.optionsMap.get(discriminatorValue);
-    if (!option) {
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_union_discriminator,
-        options: Array.from(this.optionsMap.keys()),
-        path: [discriminator]
-      });
-      return INVALID;
-    }
-    if (ctx.common.async) {
-      return option._parseAsync({
-        data: ctx.data,
-        path: ctx.path,
-        parent: ctx
-      });
-    } else {
-      return option._parseSync({
-        data: ctx.data,
-        path: ctx.path,
-        parent: ctx
-      });
-    }
-  }
-  get discriminator() {
-    return this._def.discriminator;
-  }
-  get options() {
-    return this._def.options;
-  }
-  get optionsMap() {
-    return this._def.optionsMap;
-  }
-  /**
-   * The constructor of the discriminated union schema. Its behaviour is very similar to that of the normal z.union() constructor.
-   * However, it only allows a union of objects, all of which need to share a discriminator property. This property must
-   * have a different value for each object in the union.
-   * @param discriminator the name of the discriminator property
-   * @param types an array of object schemas
-   * @param params
-   */
-  static create(discriminator, options, params) {
-    const optionsMap = /* @__PURE__ */ new Map();
-    for (const type of options) {
-      const discriminatorValues = getDiscriminator(type.shape[discriminator]);
-      if (!discriminatorValues.length) {
-        throw new Error(`A discriminator value for key \`${discriminator}\` could not be extracted from all schema options`);
-      }
-      for (const value of discriminatorValues) {
-        if (optionsMap.has(value)) {
-          throw new Error(`Discriminator property ${String(discriminator)} has duplicate value ${String(value)}`);
-        }
-        optionsMap.set(value, type);
-      }
-    }
-    return new _ZodDiscriminatedUnion(__spreadValues({
-      typeName: ZodFirstPartyTypeKind.ZodDiscriminatedUnion,
-      discriminator,
-      options,
-      optionsMap
-    }, processCreateParams(params)));
-  }
-};
-function mergeValues(a, b) {
-  const aType = getParsedType(a);
-  const bType = getParsedType(b);
-  if (a === b) {
-    return { valid: true, data: a };
-  } else if (aType === ZodParsedType.object && bType === ZodParsedType.object) {
-    const bKeys = util.objectKeys(b);
-    const sharedKeys = util.objectKeys(a).filter((key) => bKeys.indexOf(key) !== -1);
-    const newObj = __spreadValues(__spreadValues({}, a), b);
-    for (const key of sharedKeys) {
-      const sharedValue = mergeValues(a[key], b[key]);
-      if (!sharedValue.valid) {
-        return { valid: false };
-      }
-      newObj[key] = sharedValue.data;
-    }
-    return { valid: true, data: newObj };
-  } else if (aType === ZodParsedType.array && bType === ZodParsedType.array) {
-    if (a.length !== b.length) {
-      return { valid: false };
-    }
-    const newArray = [];
-    for (let index = 0; index < a.length; index++) {
-      const itemA = a[index];
-      const itemB = b[index];
-      const sharedValue = mergeValues(itemA, itemB);
-      if (!sharedValue.valid) {
-        return { valid: false };
-      }
-      newArray.push(sharedValue.data);
-    }
-    return { valid: true, data: newArray };
-  } else if (aType === ZodParsedType.date && bType === ZodParsedType.date && +a === +b) {
-    return { valid: true, data: a };
-  } else {
-    return { valid: false };
-  }
-}
-var ZodIntersection = class extends ZodType {
-  _parse(input) {
-    const { status, ctx } = this._processInputParams(input);
-    const handleParsed = (parsedLeft, parsedRight) => {
-      if (isAborted(parsedLeft) || isAborted(parsedRight)) {
-        return INVALID;
-      }
-      const merged = mergeValues(parsedLeft.value, parsedRight.value);
-      if (!merged.valid) {
-        addIssueToContext(ctx, {
-          code: ZodIssueCode.invalid_intersection_types
-        });
-        return INVALID;
-      }
-      if (isDirty(parsedLeft) || isDirty(parsedRight)) {
-        status.dirty();
-      }
-      return { status: status.value, value: merged.data };
-    };
-    if (ctx.common.async) {
-      return Promise.all([
-        this._def.left._parseAsync({
-          data: ctx.data,
-          path: ctx.path,
-          parent: ctx
-        }),
-        this._def.right._parseAsync({
-          data: ctx.data,
-          path: ctx.path,
-          parent: ctx
-        })
-      ]).then(([left, right]) => handleParsed(left, right));
-    } else {
-      return handleParsed(this._def.left._parseSync({
-        data: ctx.data,
-        path: ctx.path,
-        parent: ctx
-      }), this._def.right._parseSync({
-        data: ctx.data,
-        path: ctx.path,
-        parent: ctx
-      }));
-    }
-  }
-};
-ZodIntersection.create = (left, right, params) => {
-  return new ZodIntersection(__spreadValues({
-    left,
-    right,
-    typeName: ZodFirstPartyTypeKind.ZodIntersection
-  }, processCreateParams(params)));
-};
-var ZodTuple = class _ZodTuple extends ZodType {
-  _parse(input) {
-    const { status, ctx } = this._processInputParams(input);
-    if (ctx.parsedType !== ZodParsedType.array) {
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.array,
-        received: ctx.parsedType
-      });
-      return INVALID;
-    }
-    if (ctx.data.length < this._def.items.length) {
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.too_small,
-        minimum: this._def.items.length,
-        inclusive: true,
-        exact: false,
-        type: "array"
-      });
-      return INVALID;
-    }
-    const rest = this._def.rest;
-    if (!rest && ctx.data.length > this._def.items.length) {
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.too_big,
-        maximum: this._def.items.length,
-        inclusive: true,
-        exact: false,
-        type: "array"
-      });
-      status.dirty();
-    }
-    const items = [...ctx.data].map((item, itemIndex) => {
-      const schema = this._def.items[itemIndex] || this._def.rest;
-      if (!schema)
-        return null;
-      return schema._parse(new ParseInputLazyPath(ctx, item, ctx.path, itemIndex));
-    }).filter((x) => !!x);
-    if (ctx.common.async) {
-      return Promise.all(items).then((results) => {
-        return ParseStatus.mergeArray(status, results);
-      });
-    } else {
-      return ParseStatus.mergeArray(status, items);
-    }
-  }
-  get items() {
-    return this._def.items;
-  }
-  rest(rest) {
-    return new _ZodTuple(__spreadProps(__spreadValues({}, this._def), {
-      rest
-    }));
-  }
-};
-ZodTuple.create = (schemas, params) => {
-  if (!Array.isArray(schemas)) {
-    throw new Error("You must pass an array of schemas to z.tuple([ ... ])");
-  }
-  return new ZodTuple(__spreadValues({
-    items: schemas,
-    typeName: ZodFirstPartyTypeKind.ZodTuple,
-    rest: null
-  }, processCreateParams(params)));
-};
-var ZodRecord = class _ZodRecord extends ZodType {
-  get keySchema() {
-    return this._def.keyType;
-  }
-  get valueSchema() {
-    return this._def.valueType;
-  }
-  _parse(input) {
-    const { status, ctx } = this._processInputParams(input);
-    if (ctx.parsedType !== ZodParsedType.object) {
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.object,
-        received: ctx.parsedType
-      });
-      return INVALID;
-    }
-    const pairs = [];
-    const keyType = this._def.keyType;
-    const valueType = this._def.valueType;
-    for (const key in ctx.data) {
-      pairs.push({
-        key: keyType._parse(new ParseInputLazyPath(ctx, key, ctx.path, key)),
-        value: valueType._parse(new ParseInputLazyPath(ctx, ctx.data[key], ctx.path, key)),
-        alwaysSet: key in ctx.data
-      });
-    }
-    if (ctx.common.async) {
-      return ParseStatus.mergeObjectAsync(status, pairs);
-    } else {
-      return ParseStatus.mergeObjectSync(status, pairs);
-    }
-  }
-  get element() {
-    return this._def.valueType;
-  }
-  static create(first, second, third) {
-    if (second instanceof ZodType) {
-      return new _ZodRecord(__spreadValues({
-        keyType: first,
-        valueType: second,
-        typeName: ZodFirstPartyTypeKind.ZodRecord
-      }, processCreateParams(third)));
-    }
-    return new _ZodRecord(__spreadValues({
-      keyType: ZodString.create(),
-      valueType: first,
-      typeName: ZodFirstPartyTypeKind.ZodRecord
-    }, processCreateParams(second)));
-  }
-};
-var ZodMap = class extends ZodType {
-  get keySchema() {
-    return this._def.keyType;
-  }
-  get valueSchema() {
-    return this._def.valueType;
-  }
-  _parse(input) {
-    const { status, ctx } = this._processInputParams(input);
-    if (ctx.parsedType !== ZodParsedType.map) {
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.map,
-        received: ctx.parsedType
-      });
-      return INVALID;
-    }
-    const keyType = this._def.keyType;
-    const valueType = this._def.valueType;
-    const pairs = [...ctx.data.entries()].map(([key, value], index) => {
-      return {
-        key: keyType._parse(new ParseInputLazyPath(ctx, key, ctx.path, [index, "key"])),
-        value: valueType._parse(new ParseInputLazyPath(ctx, value, ctx.path, [index, "value"]))
-      };
-    });
-    if (ctx.common.async) {
-      const finalMap = /* @__PURE__ */ new Map();
-      return Promise.resolve().then(async () => {
-        for (const pair of pairs) {
-          const key = await pair.key;
-          const value = await pair.value;
-          if (key.status === "aborted" || value.status === "aborted") {
-            return INVALID;
-          }
-          if (key.status === "dirty" || value.status === "dirty") {
-            status.dirty();
-          }
-          finalMap.set(key.value, value.value);
-        }
-        return { status: status.value, value: finalMap };
-      });
-    } else {
-      const finalMap = /* @__PURE__ */ new Map();
-      for (const pair of pairs) {
-        const key = pair.key;
-        const value = pair.value;
-        if (key.status === "aborted" || value.status === "aborted") {
-          return INVALID;
-        }
-        if (key.status === "dirty" || value.status === "dirty") {
-          status.dirty();
-        }
-        finalMap.set(key.value, value.value);
-      }
-      return { status: status.value, value: finalMap };
-    }
-  }
-};
-ZodMap.create = (keyType, valueType, params) => {
-  return new ZodMap(__spreadValues({
-    valueType,
-    keyType,
-    typeName: ZodFirstPartyTypeKind.ZodMap
-  }, processCreateParams(params)));
-};
-var ZodSet = class _ZodSet extends ZodType {
-  _parse(input) {
-    const { status, ctx } = this._processInputParams(input);
-    if (ctx.parsedType !== ZodParsedType.set) {
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.set,
-        received: ctx.parsedType
-      });
-      return INVALID;
-    }
-    const def = this._def;
-    if (def.minSize !== null) {
-      if (ctx.data.size < def.minSize.value) {
-        addIssueToContext(ctx, {
-          code: ZodIssueCode.too_small,
-          minimum: def.minSize.value,
-          type: "set",
-          inclusive: true,
-          exact: false,
-          message: def.minSize.message
-        });
-        status.dirty();
-      }
-    }
-    if (def.maxSize !== null) {
-      if (ctx.data.size > def.maxSize.value) {
-        addIssueToContext(ctx, {
-          code: ZodIssueCode.too_big,
-          maximum: def.maxSize.value,
-          type: "set",
-          inclusive: true,
-          exact: false,
-          message: def.maxSize.message
-        });
-        status.dirty();
-      }
-    }
-    const valueType = this._def.valueType;
-    function finalizeSet(elements2) {
-      const parsedSet = /* @__PURE__ */ new Set();
-      for (const element of elements2) {
-        if (element.status === "aborted")
-          return INVALID;
-        if (element.status === "dirty")
-          status.dirty();
-        parsedSet.add(element.value);
-      }
-      return { status: status.value, value: parsedSet };
-    }
-    const elements = [...ctx.data.values()].map((item, i) => valueType._parse(new ParseInputLazyPath(ctx, item, ctx.path, i)));
-    if (ctx.common.async) {
-      return Promise.all(elements).then((elements2) => finalizeSet(elements2));
-    } else {
-      return finalizeSet(elements);
-    }
-  }
-  min(minSize, message) {
-    return new _ZodSet(__spreadProps(__spreadValues({}, this._def), {
-      minSize: { value: minSize, message: errorUtil.toString(message) }
-    }));
-  }
-  max(maxSize, message) {
-    return new _ZodSet(__spreadProps(__spreadValues({}, this._def), {
-      maxSize: { value: maxSize, message: errorUtil.toString(message) }
-    }));
-  }
-  size(size, message) {
-    return this.min(size, message).max(size, message);
-  }
-  nonempty(message) {
-    return this.min(1, message);
-  }
-};
-ZodSet.create = (valueType, params) => {
-  return new ZodSet(__spreadValues({
-    valueType,
-    minSize: null,
-    maxSize: null,
-    typeName: ZodFirstPartyTypeKind.ZodSet
-  }, processCreateParams(params)));
-};
-var ZodFunction = class _ZodFunction extends ZodType {
-  constructor() {
-    super(...arguments);
-    this.validate = this.implement;
-  }
-  _parse(input) {
-    const { ctx } = this._processInputParams(input);
-    if (ctx.parsedType !== ZodParsedType.function) {
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.function,
-        received: ctx.parsedType
-      });
-      return INVALID;
-    }
-    function makeArgsIssue(args, error39) {
-      return makeIssue({
-        data: args,
-        path: ctx.path,
-        errorMaps: [ctx.common.contextualErrorMap, ctx.schemaErrorMap, getErrorMap(), en_default].filter((x) => !!x),
-        issueData: {
-          code: ZodIssueCode.invalid_arguments,
-          argumentsError: error39
-        }
-      });
-    }
-    function makeReturnsIssue(returns, error39) {
-      return makeIssue({
-        data: returns,
-        path: ctx.path,
-        errorMaps: [ctx.common.contextualErrorMap, ctx.schemaErrorMap, getErrorMap(), en_default].filter((x) => !!x),
-        issueData: {
-          code: ZodIssueCode.invalid_return_type,
-          returnTypeError: error39
-        }
-      });
-    }
-    const params = { errorMap: ctx.common.contextualErrorMap };
-    const fn = ctx.data;
-    if (this._def.returns instanceof ZodPromise) {
-      const me = this;
-      return OK(async function(...args) {
-        const error39 = new ZodError([]);
-        const parsedArgs = await me._def.args.parseAsync(args, params).catch((e) => {
-          error39.addIssue(makeArgsIssue(args, e));
-          throw error39;
-        });
-        const result = await Reflect.apply(fn, this, parsedArgs);
-        const parsedReturns = await me._def.returns._def.type.parseAsync(result, params).catch((e) => {
-          error39.addIssue(makeReturnsIssue(result, e));
-          throw error39;
-        });
-        return parsedReturns;
-      });
-    } else {
-      const me = this;
-      return OK(function(...args) {
-        const parsedArgs = me._def.args.safeParse(args, params);
-        if (!parsedArgs.success) {
-          throw new ZodError([makeArgsIssue(args, parsedArgs.error)]);
-        }
-        const result = Reflect.apply(fn, this, parsedArgs.data);
-        const parsedReturns = me._def.returns.safeParse(result, params);
-        if (!parsedReturns.success) {
-          throw new ZodError([makeReturnsIssue(result, parsedReturns.error)]);
-        }
-        return parsedReturns.data;
-      });
-    }
-  }
-  parameters() {
-    return this._def.args;
-  }
-  returnType() {
-    return this._def.returns;
-  }
-  args(...items) {
-    return new _ZodFunction(__spreadProps(__spreadValues({}, this._def), {
-      args: ZodTuple.create(items).rest(ZodUnknown.create())
-    }));
-  }
-  returns(returnType) {
-    return new _ZodFunction(__spreadProps(__spreadValues({}, this._def), {
-      returns: returnType
-    }));
-  }
-  implement(func) {
-    const validatedFunc = this.parse(func);
-    return validatedFunc;
-  }
-  strictImplement(func) {
-    const validatedFunc = this.parse(func);
-    return validatedFunc;
-  }
-  static create(args, returns, params) {
-    return new _ZodFunction(__spreadValues({
-      args: args ? args : ZodTuple.create([]).rest(ZodUnknown.create()),
-      returns: returns || ZodUnknown.create(),
-      typeName: ZodFirstPartyTypeKind.ZodFunction
-    }, processCreateParams(params)));
-  }
-};
-var ZodLazy = class extends ZodType {
-  get schema() {
-    return this._def.getter();
-  }
-  _parse(input) {
-    const { ctx } = this._processInputParams(input);
-    const lazySchema = this._def.getter();
-    return lazySchema._parse({ data: ctx.data, path: ctx.path, parent: ctx });
-  }
-};
-ZodLazy.create = (getter, params) => {
-  return new ZodLazy(__spreadValues({
-    getter,
-    typeName: ZodFirstPartyTypeKind.ZodLazy
-  }, processCreateParams(params)));
-};
-var ZodLiteral = class extends ZodType {
-  _parse(input) {
-    if (input.data !== this._def.value) {
-      const ctx = this._getOrReturnCtx(input);
-      addIssueToContext(ctx, {
-        received: ctx.data,
-        code: ZodIssueCode.invalid_literal,
-        expected: this._def.value
-      });
-      return INVALID;
-    }
-    return { status: "valid", value: input.data };
-  }
-  get value() {
-    return this._def.value;
-  }
-};
-ZodLiteral.create = (value, params) => {
-  return new ZodLiteral(__spreadValues({
-    value,
-    typeName: ZodFirstPartyTypeKind.ZodLiteral
-  }, processCreateParams(params)));
-};
-function createZodEnum(values, params) {
-  return new ZodEnum(__spreadValues({
-    values,
-    typeName: ZodFirstPartyTypeKind.ZodEnum
-  }, processCreateParams(params)));
-}
-var ZodEnum = class _ZodEnum extends ZodType {
-  _parse(input) {
-    if (typeof input.data !== "string") {
-      const ctx = this._getOrReturnCtx(input);
-      const expectedValues = this._def.values;
-      addIssueToContext(ctx, {
-        expected: util.joinValues(expectedValues),
-        received: ctx.parsedType,
-        code: ZodIssueCode.invalid_type
-      });
-      return INVALID;
-    }
-    if (!this._cache) {
-      this._cache = new Set(this._def.values);
-    }
-    if (!this._cache.has(input.data)) {
-      const ctx = this._getOrReturnCtx(input);
-      const expectedValues = this._def.values;
-      addIssueToContext(ctx, {
-        received: ctx.data,
-        code: ZodIssueCode.invalid_enum_value,
-        options: expectedValues
-      });
-      return INVALID;
-    }
-    return OK(input.data);
-  }
-  get options() {
-    return this._def.values;
-  }
-  get enum() {
-    const enumValues = {};
-    for (const val of this._def.values) {
-      enumValues[val] = val;
-    }
-    return enumValues;
-  }
-  get Values() {
-    const enumValues = {};
-    for (const val of this._def.values) {
-      enumValues[val] = val;
-    }
-    return enumValues;
-  }
-  get Enum() {
-    const enumValues = {};
-    for (const val of this._def.values) {
-      enumValues[val] = val;
-    }
-    return enumValues;
-  }
-  extract(values, newDef = this._def) {
-    return _ZodEnum.create(values, __spreadValues(__spreadValues({}, this._def), newDef));
-  }
-  exclude(values, newDef = this._def) {
-    return _ZodEnum.create(this.options.filter((opt) => !values.includes(opt)), __spreadValues(__spreadValues({}, this._def), newDef));
-  }
-};
-ZodEnum.create = createZodEnum;
-var ZodNativeEnum = class extends ZodType {
-  _parse(input) {
-    const nativeEnumValues = util.getValidEnumValues(this._def.values);
-    const ctx = this._getOrReturnCtx(input);
-    if (ctx.parsedType !== ZodParsedType.string && ctx.parsedType !== ZodParsedType.number) {
-      const expectedValues = util.objectValues(nativeEnumValues);
-      addIssueToContext(ctx, {
-        expected: util.joinValues(expectedValues),
-        received: ctx.parsedType,
-        code: ZodIssueCode.invalid_type
-      });
-      return INVALID;
-    }
-    if (!this._cache) {
-      this._cache = new Set(util.getValidEnumValues(this._def.values));
-    }
-    if (!this._cache.has(input.data)) {
-      const expectedValues = util.objectValues(nativeEnumValues);
-      addIssueToContext(ctx, {
-        received: ctx.data,
-        code: ZodIssueCode.invalid_enum_value,
-        options: expectedValues
-      });
-      return INVALID;
-    }
-    return OK(input.data);
-  }
-  get enum() {
-    return this._def.values;
-  }
-};
-ZodNativeEnum.create = (values, params) => {
-  return new ZodNativeEnum(__spreadValues({
-    values,
-    typeName: ZodFirstPartyTypeKind.ZodNativeEnum
-  }, processCreateParams(params)));
-};
-var ZodPromise = class extends ZodType {
-  unwrap() {
-    return this._def.type;
-  }
-  _parse(input) {
-    const { ctx } = this._processInputParams(input);
-    if (ctx.parsedType !== ZodParsedType.promise && ctx.common.async === false) {
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.promise,
-        received: ctx.parsedType
-      });
-      return INVALID;
-    }
-    const promisified = ctx.parsedType === ZodParsedType.promise ? ctx.data : Promise.resolve(ctx.data);
-    return OK(promisified.then((data) => {
-      return this._def.type.parseAsync(data, {
-        path: ctx.path,
-        errorMap: ctx.common.contextualErrorMap
-      });
-    }));
-  }
-};
-ZodPromise.create = (schema, params) => {
-  return new ZodPromise(__spreadValues({
-    type: schema,
-    typeName: ZodFirstPartyTypeKind.ZodPromise
-  }, processCreateParams(params)));
-};
-var ZodEffects = class extends ZodType {
-  innerType() {
-    return this._def.schema;
-  }
-  sourceType() {
-    return this._def.schema._def.typeName === ZodFirstPartyTypeKind.ZodEffects ? this._def.schema.sourceType() : this._def.schema;
-  }
-  _parse(input) {
-    const { status, ctx } = this._processInputParams(input);
-    const effect = this._def.effect || null;
-    const checkCtx = {
-      addIssue: (arg) => {
-        addIssueToContext(ctx, arg);
-        if (arg.fatal) {
-          status.abort();
-        } else {
-          status.dirty();
-        }
-      },
-      get path() {
-        return ctx.path;
-      }
-    };
-    checkCtx.addIssue = checkCtx.addIssue.bind(checkCtx);
-    if (effect.type === "preprocess") {
-      const processed = effect.transform(ctx.data, checkCtx);
-      if (ctx.common.async) {
-        return Promise.resolve(processed).then(async (processed2) => {
-          if (status.value === "aborted")
-            return INVALID;
-          const result = await this._def.schema._parseAsync({
-            data: processed2,
-            path: ctx.path,
-            parent: ctx
-          });
-          if (result.status === "aborted")
-            return INVALID;
-          if (result.status === "dirty")
-            return DIRTY(result.value);
-          if (status.value === "dirty")
-            return DIRTY(result.value);
-          return result;
-        });
-      } else {
-        if (status.value === "aborted")
-          return INVALID;
-        const result = this._def.schema._parseSync({
-          data: processed,
-          path: ctx.path,
-          parent: ctx
-        });
-        if (result.status === "aborted")
-          return INVALID;
-        if (result.status === "dirty")
-          return DIRTY(result.value);
-        if (status.value === "dirty")
-          return DIRTY(result.value);
-        return result;
-      }
-    }
-    if (effect.type === "refinement") {
-      const executeRefinement = (acc) => {
-        const result = effect.refinement(acc, checkCtx);
-        if (ctx.common.async) {
-          return Promise.resolve(result);
-        }
-        if (result instanceof Promise) {
-          throw new Error("Async refinement encountered during synchronous parse operation. Use .parseAsync instead.");
-        }
-        return acc;
-      };
-      if (ctx.common.async === false) {
-        const inner = this._def.schema._parseSync({
-          data: ctx.data,
-          path: ctx.path,
-          parent: ctx
-        });
-        if (inner.status === "aborted")
-          return INVALID;
-        if (inner.status === "dirty")
-          status.dirty();
-        executeRefinement(inner.value);
-        return { status: status.value, value: inner.value };
-      } else {
-        return this._def.schema._parseAsync({ data: ctx.data, path: ctx.path, parent: ctx }).then((inner) => {
-          if (inner.status === "aborted")
-            return INVALID;
-          if (inner.status === "dirty")
-            status.dirty();
-          return executeRefinement(inner.value).then(() => {
-            return { status: status.value, value: inner.value };
-          });
-        });
-      }
-    }
-    if (effect.type === "transform") {
-      if (ctx.common.async === false) {
-        const base = this._def.schema._parseSync({
-          data: ctx.data,
-          path: ctx.path,
-          parent: ctx
-        });
-        if (!isValid(base))
-          return INVALID;
-        const result = effect.transform(base.value, checkCtx);
-        if (result instanceof Promise) {
-          throw new Error(`Asynchronous transform encountered during synchronous parse operation. Use .parseAsync instead.`);
-        }
-        return { status: status.value, value: result };
-      } else {
-        return this._def.schema._parseAsync({ data: ctx.data, path: ctx.path, parent: ctx }).then((base) => {
-          if (!isValid(base))
-            return INVALID;
-          return Promise.resolve(effect.transform(base.value, checkCtx)).then((result) => ({
-            status: status.value,
-            value: result
-          }));
-        });
-      }
-    }
-    util.assertNever(effect);
-  }
-};
-ZodEffects.create = (schema, effect, params) => {
-  return new ZodEffects(__spreadValues({
-    schema,
-    typeName: ZodFirstPartyTypeKind.ZodEffects,
-    effect
-  }, processCreateParams(params)));
-};
-ZodEffects.createWithPreprocess = (preprocess, schema, params) => {
-  return new ZodEffects(__spreadValues({
-    schema,
-    effect: { type: "preprocess", transform: preprocess },
-    typeName: ZodFirstPartyTypeKind.ZodEffects
-  }, processCreateParams(params)));
-};
-var ZodOptional = class extends ZodType {
-  _parse(input) {
-    const parsedType3 = this._getType(input);
-    if (parsedType3 === ZodParsedType.undefined) {
-      return OK(void 0);
-    }
-    return this._def.innerType._parse(input);
-  }
-  unwrap() {
-    return this._def.innerType;
-  }
-};
-ZodOptional.create = (type, params) => {
-  return new ZodOptional(__spreadValues({
-    innerType: type,
-    typeName: ZodFirstPartyTypeKind.ZodOptional
-  }, processCreateParams(params)));
-};
-var ZodNullable = class extends ZodType {
-  _parse(input) {
-    const parsedType3 = this._getType(input);
-    if (parsedType3 === ZodParsedType.null) {
-      return OK(null);
-    }
-    return this._def.innerType._parse(input);
-  }
-  unwrap() {
-    return this._def.innerType;
-  }
-};
-ZodNullable.create = (type, params) => {
-  return new ZodNullable(__spreadValues({
-    innerType: type,
-    typeName: ZodFirstPartyTypeKind.ZodNullable
-  }, processCreateParams(params)));
-};
-var ZodDefault = class extends ZodType {
-  _parse(input) {
-    const { ctx } = this._processInputParams(input);
-    let data = ctx.data;
-    if (ctx.parsedType === ZodParsedType.undefined) {
-      data = this._def.defaultValue();
-    }
-    return this._def.innerType._parse({
-      data,
-      path: ctx.path,
-      parent: ctx
-    });
-  }
-  removeDefault() {
-    return this._def.innerType;
-  }
-};
-ZodDefault.create = (type, params) => {
-  return new ZodDefault(__spreadValues({
-    innerType: type,
-    typeName: ZodFirstPartyTypeKind.ZodDefault,
-    defaultValue: typeof params.default === "function" ? params.default : () => params.default
-  }, processCreateParams(params)));
-};
-var ZodCatch = class extends ZodType {
-  _parse(input) {
-    const { ctx } = this._processInputParams(input);
-    const newCtx = __spreadProps(__spreadValues({}, ctx), {
-      common: __spreadProps(__spreadValues({}, ctx.common), {
-        issues: []
-      })
-    });
-    const result = this._def.innerType._parse({
-      data: newCtx.data,
-      path: newCtx.path,
-      parent: __spreadValues({}, newCtx)
-    });
-    if (isAsync(result)) {
-      return result.then((result2) => {
-        return {
-          status: "valid",
-          value: result2.status === "valid" ? result2.value : this._def.catchValue({
-            get error() {
-              return new ZodError(newCtx.common.issues);
-            },
-            input: newCtx.data
-          })
-        };
-      });
-    } else {
-      return {
-        status: "valid",
-        value: result.status === "valid" ? result.value : this._def.catchValue({
-          get error() {
-            return new ZodError(newCtx.common.issues);
-          },
-          input: newCtx.data
-        })
-      };
-    }
-  }
-  removeCatch() {
-    return this._def.innerType;
-  }
-};
-ZodCatch.create = (type, params) => {
-  return new ZodCatch(__spreadValues({
-    innerType: type,
-    typeName: ZodFirstPartyTypeKind.ZodCatch,
-    catchValue: typeof params.catch === "function" ? params.catch : () => params.catch
-  }, processCreateParams(params)));
-};
-var ZodNaN = class extends ZodType {
-  _parse(input) {
-    const parsedType3 = this._getType(input);
-    if (parsedType3 !== ZodParsedType.nan) {
-      const ctx = this._getOrReturnCtx(input);
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.nan,
-        received: ctx.parsedType
-      });
-      return INVALID;
-    }
-    return { status: "valid", value: input.data };
-  }
-};
-ZodNaN.create = (params) => {
-  return new ZodNaN(__spreadValues({
-    typeName: ZodFirstPartyTypeKind.ZodNaN
-  }, processCreateParams(params)));
-};
-var BRAND = Symbol("zod_brand");
-var ZodBranded = class extends ZodType {
-  _parse(input) {
-    const { ctx } = this._processInputParams(input);
-    const data = ctx.data;
-    return this._def.type._parse({
-      data,
-      path: ctx.path,
-      parent: ctx
-    });
-  }
-  unwrap() {
-    return this._def.type;
-  }
-};
-var ZodPipeline = class _ZodPipeline extends ZodType {
-  _parse(input) {
-    const { status, ctx } = this._processInputParams(input);
-    if (ctx.common.async) {
-      const handleAsync = async () => {
-        const inResult = await this._def.in._parseAsync({
-          data: ctx.data,
-          path: ctx.path,
-          parent: ctx
-        });
-        if (inResult.status === "aborted")
-          return INVALID;
-        if (inResult.status === "dirty") {
-          status.dirty();
-          return DIRTY(inResult.value);
-        } else {
-          return this._def.out._parseAsync({
-            data: inResult.value,
-            path: ctx.path,
-            parent: ctx
-          });
-        }
-      };
-      return handleAsync();
-    } else {
-      const inResult = this._def.in._parseSync({
-        data: ctx.data,
-        path: ctx.path,
-        parent: ctx
-      });
-      if (inResult.status === "aborted")
-        return INVALID;
-      if (inResult.status === "dirty") {
-        status.dirty();
-        return {
-          status: "dirty",
-          value: inResult.value
-        };
-      } else {
-        return this._def.out._parseSync({
-          data: inResult.value,
-          path: ctx.path,
-          parent: ctx
-        });
-      }
-    }
-  }
-  static create(a, b) {
-    return new _ZodPipeline({
-      in: a,
-      out: b,
-      typeName: ZodFirstPartyTypeKind.ZodPipeline
-    });
-  }
-};
-var ZodReadonly = class extends ZodType {
-  _parse(input) {
-    const result = this._def.innerType._parse(input);
-    const freeze = (data) => {
-      if (isValid(data)) {
-        data.value = Object.freeze(data.value);
-      }
-      return data;
-    };
-    return isAsync(result) ? result.then((data) => freeze(data)) : freeze(result);
-  }
-  unwrap() {
-    return this._def.innerType;
-  }
-};
-ZodReadonly.create = (type, params) => {
-  return new ZodReadonly(__spreadValues({
-    innerType: type,
-    typeName: ZodFirstPartyTypeKind.ZodReadonly
-  }, processCreateParams(params)));
-};
-var late = {
-  object: ZodObject.lazycreate
-};
-var ZodFirstPartyTypeKind;
-(function(ZodFirstPartyTypeKind2) {
-  ZodFirstPartyTypeKind2["ZodString"] = "ZodString";
-  ZodFirstPartyTypeKind2["ZodNumber"] = "ZodNumber";
-  ZodFirstPartyTypeKind2["ZodNaN"] = "ZodNaN";
-  ZodFirstPartyTypeKind2["ZodBigInt"] = "ZodBigInt";
-  ZodFirstPartyTypeKind2["ZodBoolean"] = "ZodBoolean";
-  ZodFirstPartyTypeKind2["ZodDate"] = "ZodDate";
-  ZodFirstPartyTypeKind2["ZodSymbol"] = "ZodSymbol";
-  ZodFirstPartyTypeKind2["ZodUndefined"] = "ZodUndefined";
-  ZodFirstPartyTypeKind2["ZodNull"] = "ZodNull";
-  ZodFirstPartyTypeKind2["ZodAny"] = "ZodAny";
-  ZodFirstPartyTypeKind2["ZodUnknown"] = "ZodUnknown";
-  ZodFirstPartyTypeKind2["ZodNever"] = "ZodNever";
-  ZodFirstPartyTypeKind2["ZodVoid"] = "ZodVoid";
-  ZodFirstPartyTypeKind2["ZodArray"] = "ZodArray";
-  ZodFirstPartyTypeKind2["ZodObject"] = "ZodObject";
-  ZodFirstPartyTypeKind2["ZodUnion"] = "ZodUnion";
-  ZodFirstPartyTypeKind2["ZodDiscriminatedUnion"] = "ZodDiscriminatedUnion";
-  ZodFirstPartyTypeKind2["ZodIntersection"] = "ZodIntersection";
-  ZodFirstPartyTypeKind2["ZodTuple"] = "ZodTuple";
-  ZodFirstPartyTypeKind2["ZodRecord"] = "ZodRecord";
-  ZodFirstPartyTypeKind2["ZodMap"] = "ZodMap";
-  ZodFirstPartyTypeKind2["ZodSet"] = "ZodSet";
-  ZodFirstPartyTypeKind2["ZodFunction"] = "ZodFunction";
-  ZodFirstPartyTypeKind2["ZodLazy"] = "ZodLazy";
-  ZodFirstPartyTypeKind2["ZodLiteral"] = "ZodLiteral";
-  ZodFirstPartyTypeKind2["ZodEnum"] = "ZodEnum";
-  ZodFirstPartyTypeKind2["ZodEffects"] = "ZodEffects";
-  ZodFirstPartyTypeKind2["ZodNativeEnum"] = "ZodNativeEnum";
-  ZodFirstPartyTypeKind2["ZodOptional"] = "ZodOptional";
-  ZodFirstPartyTypeKind2["ZodNullable"] = "ZodNullable";
-  ZodFirstPartyTypeKind2["ZodDefault"] = "ZodDefault";
-  ZodFirstPartyTypeKind2["ZodCatch"] = "ZodCatch";
-  ZodFirstPartyTypeKind2["ZodPromise"] = "ZodPromise";
-  ZodFirstPartyTypeKind2["ZodBranded"] = "ZodBranded";
-  ZodFirstPartyTypeKind2["ZodPipeline"] = "ZodPipeline";
-  ZodFirstPartyTypeKind2["ZodReadonly"] = "ZodReadonly";
-})(ZodFirstPartyTypeKind || (ZodFirstPartyTypeKind = {}));
-var stringType = ZodString.create;
-var numberType = ZodNumber.create;
-var nanType = ZodNaN.create;
-var bigIntType = ZodBigInt.create;
-var booleanType = ZodBoolean.create;
-var dateType = ZodDate.create;
-var symbolType = ZodSymbol.create;
-var undefinedType = ZodUndefined.create;
-var nullType = ZodNull.create;
-var anyType = ZodAny.create;
-var unknownType = ZodUnknown.create;
-var neverType = ZodNever.create;
-var voidType = ZodVoid.create;
-var arrayType = ZodArray.create;
-var objectType = ZodObject.create;
-var strictObjectType = ZodObject.strictCreate;
-var unionType = ZodUnion.create;
-var discriminatedUnionType = ZodDiscriminatedUnion.create;
-var intersectionType = ZodIntersection.create;
-var tupleType = ZodTuple.create;
-var recordType = ZodRecord.create;
-var mapType = ZodMap.create;
-var setType = ZodSet.create;
-var functionType = ZodFunction.create;
-var lazyType = ZodLazy.create;
-var literalType = ZodLiteral.create;
-var enumType = ZodEnum.create;
-var nativeEnumType = ZodNativeEnum.create;
-var promiseType = ZodPromise.create;
-var effectsType = ZodEffects.create;
-var optionalType = ZodOptional.create;
-var nullableType = ZodNullable.create;
-var preprocessType = ZodEffects.createWithPreprocess;
-var pipelineType = ZodPipeline.create;
-
-// src/pluginData.ts
-var PlotType = enumType(["general", "combat", "puzzle", "chase", "roleplay", "shop"]);
-var CombatantSchema = objectType({
-  characterIndex: numberType().int(),
-  // Link to state.characters by index
-  currentHp: numberType().int(),
-  maxHp: numberType().int(),
-  status: enumType(["active", "unconscious", "dead", "fled", "surrendered"]),
-  isFriendly: booleanType(),
-  // Added "Friendly" flag for allies
-  initiativeRoll: numberType().int()
-});
-var BattleSchema = objectType({
-  roundNumber: numberType().int(),
-  combatants: arrayType(CombatantSchema),
-  combatLog: arrayType(stringType()),
-  activeTurnCombatantIndex: numberType().int().optional()
-  // Index of the Combatant whose turn it is in the combatants array.
-});
-var DnDStatsSchema = objectType({
-  strength: numberType().int().min(1).max(20),
-  dexterity: numberType().int().min(1).max(20),
-  constitution: numberType().int().min(1).max(20),
-  intelligence: numberType().int().min(1).max(20),
-  wisdom: numberType().int().min(1).max(20),
-  charisma: numberType().int().min(1).max(20),
-  hp: numberType().int().default(10),
-  // HP for the character
-  hpMax: numberType().int().default(10),
-  // Max HP for the character
-  dndExp: numberType().int().min(0).default(0),
-  // Experience points, default to 0
-  dndLevel: numberType().int().min(1).max(20).default(1),
-  // Character level, default to 1
-  dndClass: stringType(),
-  dndSubclass: stringType(),
-  plotType: PlotType.default("general"),
-  // Default to general
-  encounter: BattleSchema.optional(),
-  // Holds battle data when plotType is "combat"
-  backstory: stringType().optional()
-  // To store the initial character creation backstory
-});
-function suggestDefaultClass(stats) {
-  const { strength, dexterity, constitution, intelligence, wisdom, charisma } = stats;
-  const statArr = [
-    { key: "strength", value: strength },
-    { key: "dexterity", value: dexterity },
-    { key: "constitution", value: constitution },
-    { key: "intelligence", value: intelligence },
-    { key: "wisdom", value: wisdom },
-    { key: "charisma", value: charisma }
-  ];
-  statArr.sort((a, b) => b.value - a.value);
-  const top = statArr[0];
-  const second = statArr[1];
-  switch (top.key) {
-    case "strength":
-      return "Fighter";
-    case "dexterity":
-      if (second.key === "wisdom") return "Ranger";
-      return "Rogue";
-    case "intelligence":
-      return "Wizard";
-    case "constitution":
-      if (second.key === "strength") return "Barbarian";
-      if (second.key === "wisdom") return "Druid";
-      if (second.key === "intelligence") return "Wizard";
-      if (second.key === "charisma") return "Sorcerer";
-      if (second.key === "dexterity") return "Rogue";
-      return "Fighter";
-    case "wisdom":
-      if (second.key === "dexterity") return "Monk";
-      return "Cleric";
-    case "charisma":
-      if (strength >= 13) return "Paladin";
-      if (second.key === "constitution") return "Warlock";
-      return "Bard";
-    default:
-      return "Fighter";
-  }
-}
-var generateDefaultDnDStats = (rpgDiceRoller) => {
-  const rollFormula = "4d6dl1";
-  const rollAttribute = () => new rpgDiceRoller.DiceRoll(rollFormula).total;
-  const generatedStats = {
-    strength: rollAttribute(),
-    dexterity: rollAttribute(),
-    constitution: rollAttribute(),
-    intelligence: rollAttribute(),
-    wisdom: rollAttribute(),
-    charisma: rollAttribute(),
-    hp: 10,
-    // Default starting HP
-    hpMax: 10,
-    // Default max HP
-    dndLevel: 1,
-    // Default level
-    dndExp: 0,
-    // Default experience points
-    dndClass: "",
-    dndSubclass: "",
-    plotType: PlotType.enum.general,
-    encounter: void 0,
-    backstory: ""
-  };
-  const suggestedClass = suggestDefaultClass(generatedStats);
-  return __spreadProps(__spreadValues({}, generatedStats), {
-    dndClass: suggestedClass
-    //dndSubclass: suggestedSubclass,
-  });
-};
-var DnDClassData = {
-  "Barbarian": [
-    "Path of the Berserker",
-    "Path of the Totem Warrior",
-    "Path of the Ancestral Guardian",
-    "Path of the Storm Herald",
-    "Path of the Zealot"
-  ],
-  "Bard": [
-    "College of Lore",
-    "College of Valor",
-    "College of Glamour",
-    "College of Whispers"
-  ],
-  "Cleric": [
-    "Life Domain",
-    "Light Domain",
-    "Trickery Domain",
-    "Knowledge Domain",
-    "Nature Domain",
-    "Tempest Domain",
-    "War Domain",
-    "Death Domain",
-    "Forge Domain",
-    "Grave Domain"
-  ],
-  "Druid": [
-    "Circle of the Moon",
-    "Circle of the Land",
-    "Circle of Dreams",
-    "Circle of the Shepherd"
-  ],
-  "Fighter": [
-    "Champion",
-    "Battle Master",
-    "Eldritch Knight",
-    "Arcane Archer",
-    "Cavalier",
-    "Samurai"
-  ],
-  "Monk": [
-    "Way of the Open Hand",
-    "Way of the Shadow",
-    "Way of the Four Elements",
-    "Way of the Drunken Master",
-    "Way of the Kensei",
-    "Way of the Sun Soul"
-  ],
-  "Paladin": [
-    "Oath of Devotion",
-    "Oath of the Ancients",
-    "Oath of Vengeance",
-    "Oathbreaker",
-    "Oath of Conquest",
-    "Oath of Redemption"
-  ],
-  "Ranger": [
-    "Hunter",
-    "Beast Master",
-    "Gloom Stalker",
-    "Horizon Walker",
-    "Monster Slayer"
-  ],
-  "Rogue": [
-    "Thief",
-    "Assassin",
-    "Arcane Trickster",
-    "Inquisitive",
-    "Mastermind",
-    "Scout",
-    "Swashbuckler"
-  ],
-  "Sorcerer": [
-    "Draconic Bloodline",
-    "Wild Magic",
-    "Divine Soul",
-    "Shadow Magic",
-    "Storm Sorcery"
-  ],
-  "Warlock": [
-    "The Archfey",
-    "The Fiend",
-    "The Great Old One",
-    "The Celestial",
-    "The Hexblade"
-  ],
-  "Wizard": [
-    "School of Abjuration",
-    "School of Conjuration",
-    "School of Divination",
-    "School of Enchantment",
-    "School of Evocation",
-    "School of Illusion",
-    "School of Necromancy",
-    "School of Transmutation",
-    "War Magic"
-  ]
-};
-function getAbilityModifier(score) {
-  return Math.floor((score - 10) / 2);
-}
-function resolveCheck(check2, characterStats, dndStats, rpgDiceRoller) {
-  let abilityScore;
-  let modifier = 0;
-  switch (check2.type.toLowerCase()) {
-    case "strength":
-    case "athletics":
-      abilityScore = dndStats.strength;
-      break;
-    case "dexterity":
-    case "acrobatics":
-    case "sleight of hand":
-    case "stealth":
-      abilityScore = dndStats.dexterity;
-      break;
-    case "constitution":
-      abilityScore = dndStats.constitution;
-      break;
-    case "intelligence":
-    case "arcana":
-    case "history":
-    case "investigation":
-    case "nature":
-    case "religion":
-      abilityScore = dndStats.intelligence;
-      break;
-    case "wisdom":
-    case "animal handling":
-    case "insight":
-    case "medicine":
-    case "perception":
-    case "survival":
-      abilityScore = dndStats.wisdom;
-      break;
-    case "charisma":
-    case "deception":
-    case "intimidation":
-    case "performance":
-    case "persuasion":
-      abilityScore = dndStats.charisma;
-      break;
-    case "initiative":
-      abilityScore = dndStats.dexterity;
-      break;
-    default:
-      if (check2.modifiers && check2.modifiers.length > 0) {
-        const primaryModifier = check2.modifiers[0].toLowerCase();
-        switch (primaryModifier) {
-          case "strength":
-            abilityScore = dndStats.strength;
-            break;
-          case "dexterity":
-            abilityScore = dndStats.dexterity;
-            break;
-          case "constitution":
-            abilityScore = dndStats.constitution;
-            break;
-          case "intelligence":
-            abilityScore = dndStats.intelligence;
-            break;
-          case "wisdom":
-            abilityScore = dndStats.wisdom;
-            break;
-          case "charisma":
-            abilityScore = dndStats.charisma;
-            break;
-        }
-      }
-      break;
-  }
-  if (abilityScore === void 0) {
-    return `Check for ${check2.type} could not be resolved: No relevant ability score found.`;
-  }
-  modifier = getAbilityModifier(abilityScore);
-  const roll = new rpgDiceRoller.DiceRoll("1d20").total;
-  const total = roll + modifier;
-  let resultStatement;
-  if (total >= check2.difficultyClass) {
-    resultStatement = `${characterStats.name} successfully passed the ${check2.type} check (DC ${check2.difficultyClass}) with a roll of ${roll} and a total of ${total}.`;
-  } else {
-    resultStatement = `${characterStats.name} failed the ${check2.type} check (DC ${check2.difficultyClass}) with a roll of ${roll} and a total of ${total}.`;
-  }
-  return resultStatement;
-}
-
-// src/pluginPrompt.ts
-function modifyProtagonistPromptForDnd(originalPrompt) {
-  return originalPrompt;
-}
-var coreAttributesContent = `
-In Dungeons & Dragons 5th Edition, ability scores range from 1 to 10, with 10-11 being the average for a commoner. While the game provides numerical modifiers, a descriptive interpretation helps bring characters to life. Here's a complete example for each main stat, from lowest to highest:
-
-## Strength
-
-**Strength** measures bodily power, athletic training, and the extent to which you can exert raw physical force.
-
-* **3 (Mod. -4):** **Morbidly Weak.** You struggle to lift your own limbs. Basic movements are a Herculean effort. You'd likely need help to stand and could be knocked over by a strong breeze.
-* **4-5 (Mod. -3):** **Feeble.** Visibly weak and frail. You might be able to pick up a small child, but anything more is a serious strain. Swinging even a light weapon might throw you off balance.
-* **6-7 (Mod. -2):** **Weak.** You struggle with anything heavier than a light load. Pushing an object your own weight is a significant challenge. You're easily winded by physical exertion.
-* **8-9 (Mod. -1):** **Below Average.** You can perform basic physical tasks, but you're not particularly strong. Lifting heavy objects for an extended time is difficult. You'd probably be one of the last picked for a team in a physically demanding task.
-* **10-11 (Mod. 0):** **Average.** You're capable of typical physical labor for a few hours. You can pull your own weight and lift moderately heavy objects for short periods. This is the common human average.
-* **12-13 (Mod. +1):** **Competent.** You're noticeably stronger than the average person. You can carry heavy objects, throw small objects with decent force, and perform physical labor for half a day without excessive fatigue.
-* **14-15 (Mod. +2):** **Strong.** You're visibly toned and capable. You can easily carry heavy objects with one arm and are not easily exhausted by physical exertion. You'd stand out in a crowd for your physique.
-* **16-17 (Mod. +3):** **Very Strong.** Muscular and powerful. You can break objects like wood with your bare hands and perform heavy physical labor for several hours. You'd be competitive in most strength challenges.
-* **18-19 (Mod. +4):** **Heavily Muscular/Near Peak Human.** Your strength borders on legendary for a mortal. You can bend steel bars, easily lift and throw grown individuals, and are a force of nature in a direct physical confrontation.
-* **20-21 (Mod. +5):** **Legendary.** Your strength is beyond what most consider possible. You can effortlessly tear through thick materials, lift small carts, and single-handedly overcome obstacles that would require a team of lesser individuals.
-* **22-23 (Mod. +6):** **Superhuman.** You are a physical marvel, easily confused for a minor giant or demigod. You can shatter boulders with a punch and rip trees from the ground.
-* **24-25 (Mod. +7):** **Mythic.** Your raw physical power is truly astounding, capable of feats of strength that defy mortal understanding. You might be able to throw siege weapons or punch through reinforced walls.
-* **26-27 (Mod. +8):** **Godlike (Lesser).** You possess strength that few mortals could ever hope to attain, hinting at divine lineage or immense magical power.
-* **28-29 (Mod. +9):** **Godlike (Greater).** Your strength approaches the might of true deities, capable of altering the landscape with your bare hands.
-* **30 (Mod. +10):** **Divine.** You possess the strength of a god. Your physical might is virtually boundless, allowing you to reshape reality through sheer force.
-
-## Dexterity
-
-**Dexterity** measures agility, reflexes, and balance.
-
-* **3 (Mod. -4):** **Barely Mobile.** You are severely uncoordinated, likely due to a physical disability or paralysis. Basic movements are painful and require extreme effort.
-* **4-5 (Mod. -3):** **Clumsy.** You frequently stumble, drop things, and struggle with tasks requiring manual precision. You move slowly and deliberately to avoid accidents.
-* **6-7 (Mod. -2):** **Awkward.** You're graceless and slow to react. You might trip over your own feet occasionally and have difficulty with fine motor skills like sewing or picking up small objects quickly.
-* **8-9 (Mod. -1):** **A Bit Ungainly.** You're somewhat slow and occasionally trip or bump into things. You're not particularly agile, but generally functional.
-* **10-11 (Mod. 0):** **Average.** You have typical balance and hand-eye coordination. You can catch a small tossed object, and perform basic precise tasks if needed, though not exceptionally well.
-* **12-13 (Mod. +1):** **Nimble.** You're well-poised and balanced. You move with a degree of grace and are capable of precise manipulations. You can generally handle an obstacle course with some effort.
-* **14-15 (Mod. +2):** **Adept.** You move elegantly and can manipulate objects with care and precision. You can often hit small targets and skillfully navigate challenging terrain.
-* **16-17 (Mod. +3):** **Graceful.** You have excellent control over your body, moving with the fluidity of a dancer or a trained acrobat. You're capable of extremely subtle and precise tasks, hitting moving targets with ease.
-* **18-19 (Mod. +4):** **Lithe/Peak Human Agility.** Your agility is bordering on the incredible. You can perform complex acrobatic maneuvers, dodge a barrage of projectiles, and pick even intricate locks with astonishing speed.
-* **20-21 (Mod. +5):** **Uncanny Agility.** You move like water, reacting to all situations with almost no effort. You can dodge a large number of thrown objects simultaneously and traverse difficult terrain as if it were flat ground.
-* **22-23 (Mod. +6):** **Superhuman Agility.** Your reflexes and control are beyond mortal comprehension. You can perceive and react to threats before others even register them, moving with impossible speed and precision.
-* **24-25 (Mod. +7):** **Mythic Agility.** You can disappear and reappear seemingly at will, or move so fast that you appear to be in multiple places at once. Your movements are a blur to the untrained eye.
-* **26-27 (Mod. +8):** **Godlike (Lesser).** You possess agility that rivals minor deities, capable of feats of impossible evasion and acrobatic brilliance.
-* **28-29 (Mod. +9):** **Godlike (Greater).** Your agility is on par with true deities. You can move with such speed and grace that you seem to transcend physical limitations.
-* **30 (Mod. +10):** **Divine.** You embody pure agility. Your movements are perfect, anticipating and reacting to any event with flawless execution.
-
-## Constitution
-
-**Constitution** measures health, stamina, and vital force.
-
-* **3 (Mod. -4):** **Frail/Mortally Ill.** Your body is barely functioning. You have a minimal immune system, are constantly exhausted, and likely suffer from chronic illness or multiple broken bones. A strong cough might put you in critical condition.
-* **4-5 (Mod. -3):** **Delicate.** You bruise very easily, are prone to sickness, and can be knocked unconscious by a light punch. You have very little stamina and tire quickly.
-* **6-7 (Mod. -2):** **Unhealthy.** You're unusually prone to disease and infection, easily winded, and struggle with prolonged physical activity. You often feel unwell.
-* **8-9 (Mod. -1):** **Fragile.** You're easily winded and can't endure a full day of hard labor without needing significant rest. You might occasionally catch mild illnesses.
-* **10-11 (Mod. 0):** **Average.** You're in typical health. You might occasionally contract mild sicknesses, but you recover normally. You can handle a standard workday.
-* **12-13 (Mod. +1):** **Sturdy.** You're in good health and fairly fit. You can take a few hits before being knocked unconscious and can labor for extended periods without undue fatigue.
-* **14-15 (Mod. +2):** **Hardy.** You easily shrug off most illnesses and can endure significant physical punishment. You're capable of working twelve hours most days with little complaint.
-* **16-17 (Mod. +3):** **Tough.** Physically robust and resilient. You rarely get sick, can shrug off serious injuries, and can stay awake and active for days on end without significant rest.
-* **18-19 (Mod. +4):** **Iron Will/Peak Human Endurance.** Your body is a fortress. You are incredibly difficult to sicken, poison, or injure, and you can push through pain and exhaustion far beyond normal limits.
-* **20-21 (Mod. +5):** **Indomitable.** Your physical resilience is almost unnatural. You can survive wounds that would be instantly fatal to others, endure extreme environments, and resist nearly all forms of physical affliction.
-* **22-23 (Mod. +6):** **Superhuman Endurance.** Your body is an engine of pure resilience. You can regenerate from grievous wounds with startling speed and are virtually immune to most mundane threats to your health.
-* **24-25 (Mod. +7):** **Mythic Endurance.** You are a living testament to unyielding fortitude. You can withstand cataclysmic forces and continue fighting long after any normal creature would have perished.
-* **26-27 (Mod. +8):** **Godlike (Lesser).** Your very being defies physical limitations, hinting at an eternal nature or divine protection.
-* **28-29 (Mod. +9):** **Godlike (Greater).** Your endurance approaches the might of true deities, capable of altering the landscape with your bare hands.
-* **30 (Mod. +10):** **Divine.** You are the embodiment of vital force. You are immortal and unyielding, effectively immune to all but the most powerful cosmic forces.
-
-## Intelligence
-
-**Intelligence** measures mental acuity, accuracy of recall, and the ability to reason.
-
-* **3 (Mod. -4):** **Animalistic.** You are barely sentient, incapable of logic or reason. Your behavior is reduced to simple reactions to immediate stimuli, perhaps akin to a very simple-minded animal.
-* **4-5 (Mod. -3):** **Dim-witted.** You have extremely limited speech and knowledge, often resorting to charades to express simple thoughts. You struggle with basic concepts and forget details easily.
-* **6-7 (Mod. -2):** **Slow-witted.** You have trouble following trains of thought, often misuse or mispronounce words, and forget most unimportant things. Learning new concepts is a slow and frustrating process.
-* **8-9 (Mod. -1):** **Forgetful/Unimaginative.** You make more errors than usual when reasoning and might struggle to retain complex knowledge. You're not unintelligent, but you're not particularly quick or insightful.
-* **10-11 (Mod. 0):** **Average.** You know what you need to know to get by. You can reason effectively for most daily tasks and retain general knowledge. This is the common human average.
-* **12-13 (Mod. +1):** **Bright.** You know a bit more than is necessary and are fairly logical. You can grasp new concepts relatively quickly and are generally quick-witted in conversation.
-* **14-15 (Mod. +2):** **Intelligent.** You are fairly intelligent, able to understand new tasks quickly and perform complex mental calculations. You can often solve logic puzzles mentally with reasonable accuracy.
-* **16-17 (Mod. +3):** **Very Intelligent.** You possess a keen mind, capable of deep analysis and abstract thought. You might invent new processes or uses for knowledge and readily connect disparate ideas.
-* **18-19 (Mod. +4):** **Highly Intelligent/Genius.** You are highly knowledgeable and probably the smartest person many people know. You can make Holmesian leaps of logic and master complex subjects with remarkable speed.
-* **20-21 (Mod. +5):** **Exceptional Genius.** You are famous as a sage and a genius, capable of groundbreaking discoveries and solving problems that baffle others. Your mind works at an incredible pace.
-* **22-23 (Mod. +6):** **Superhuman Intellect.** Your mental faculties operate on a different plane. You can process information at an astonishing rate, hold multiple complex thoughts simultaneously, and instantly recall vast amounts of information.
-* **24-25 (Mod. +7):** **Mythic Intellect.** Your intellect borders on the cosmic. You might be able to understand complex magical theories at a glance, devise strategies with incredible foresight, or even comprehend impossible concepts.
-* **26-27 (Mod. +8):** **Godlike (Lesser).** Your mind approaches that of a minor deity, capable of understanding and manipulating fundamental forces of reality through sheer mental power.
-* **28-29 (Mod. +9):** **Godlike (Greater).** Your intellect is on par with true deities. You possess omniscience within a certain domain, capable of comprehending the universe's most profound mysteries.
-* **30 (Mod. +10):** **Divine.** You are the embodiment of pure intellect. Your knowledge is boundless, and your understanding encompasses all things.
-
-## Wisdom
-
-**Wisdom** measures perception, intuition, insight, and common sense.
-
-* **3 (Mod. -4):** **Oblivious/Barely Aware.** You are seemingly incapable of thought or barely aware of your surroundings. You might stare blankly or miss obvious threats.
-* **4-5 (Mod. -3):** **Unobservant.** You rarely notice important or prominent items, people, or occurrences. You seem incapable of forethought and are easily surprised or misled.
-* **6-7 (Mod. -2):** **Foolish.** You often fail to exert common sense, make rash decisions, and are prone to overlooking crucial details. You're easily tricked or caught off guard.
-* **8-9 (Mod. -1):** **Inattentive.** You might forget or opt not to consider all options before taking action. You're generally well-meaning but prone to errors in judgment and perception.
-* **10-11 (Mod. 0):** **Average.** You make reasoned decisions most of the time and have a decent awareness of your surroundings. You're generally sensible. This is the common human average.
-* **12-13 (Mod. +1):** **Perceptive.** You have a good eye for detail and are capable of reading people fairly well. You can often tell when a person is upset or lying.
-* **14-15 (Mod. +2):** **Insightful.** You read people and situations very well and often get strong hunches about a situation that doesn't feel right. You're rarely surprised and notice subtle clues others miss.
-* **16-17 (Mod. +3):** **Keen-witted.** You are keenly aware of your environment and changes within it, seldom missing a clue, insinuation, or lie. You possess excellent judgment and intuition.
-* **18-19 (Mod. +4):** **Profoundly Wise/Preternatural Awareness.** You are often sought out for your wisdom and are a natural leader in difficult situations. You seem to anticipate events before they happen and possess an almost preternatural awareness.
-* **20-21 (Mod. +5):** **Sage-like.** Your wisdom is legendary. You possess perfect awareness of surroundings, context, and implications, making it extremely hard to get anything past you. You are a fount of practical knowledge.
-* **22-23 (Mod. +6):** **Superhuman Perception.** Your senses are incredibly acute, and your intuition is infallible. You can perceive hidden truths and insights others can't even fathom.
-* **24-25 (Mod. +7):** **Mythic Awareness.** Your perception extends beyond the mundane, allowing you to sense magic, spirits, or even faint echoes of past events. You are rarely truly surprised.
-* **26-27 (Mod. +8):** **Godlike (Lesser).** Your wisdom rivals that of minor deities, granting you glimpses into fate or the true nature of reality.
-* **28-29 (Mod. +9):** **Godlike (Greater).** Your wisdom is on par with true deities. You understand the fundamental truths of existence and the intricate workings of the cosmos.
-* **30 (Mod. +10):** **Divine.** You embody pure wisdom. Your understanding is absolute, and your intuition is flawless, allowing you to perceive all things as they truly are.
-
-## Charisma
-
-**Charisma** measures your ability to interact effectively with others, reflecting confidence, eloquence, and force of personality.
-
-* **3 (Mod. -4):** **Repellent.** You are profoundly hateful, utterly tactless, and possess no empathy. People are instinctively repulsed by you or find you incredibly boring.
-* **4-5 (Mod. -3):** **Off-putting.** You are deeply disagreeable, whether through extreme incompetence, malice, or utter blandness. You have trouble even thinking of others as people and how to interact with them.
-* **6-7 (Mod. -2):** **Unlikable.** You are terribly reticent, uninteresting, or rude. You frequently make gaffes and have difficulty connecting with others.
-* **8-9 (Mod. -1):** **Awkward.** You're somewhat socially inept or dull. You might make people mildly uncomfortable or struggle to find the right words in conversation.
-* **10-11 (Mod. 0):** **Average.** You are capable of polite conversation and can generally navigate social situations without major issues. You're neither particularly charming nor particularly off-putting. This is the common human average.
-* **12-13 (Mod. +1):** **Personable.** You are mildly interesting and know what to say to the right people. You can make a good first impression and hold your own in a debate.
-* **14-15 (Mod. +2):** **Charming.** You are often popular or infamous, possessing assured social skills. You know what to say to most people and can confidently lead a conversation or argument.
-* **16-17 (Mod. +3):** **Compelling.** You are quickly likeable, respected, or feared by many. You are very eloquent, persuasive, and possess a strong force of personality that draws others to you (or makes them wary).
-* **18-19 (Mod. +4):** **Magnetic/Peak Human Presence.** Your presence lights up a room, and people are immediately drawn to you. Even your worst enemies can't help but respond to your words. You are a natural leader, orator, or performer.
-* **20-21 (Mod. +5):** **Inspirational.** You possess a truly captivating personality. You can inspire devotion, command legions, and sway the hearts and minds of entire crowds with your words and actions.
-* **22-23 (Mod. +6):** **Superhuman Presence.** Your force of personality is overwhelming. You can charm beings resistant to mundane influence, and your mere presence can instill awe or dread.
-* **24-25 (Mod. +7):** **Mythic Presence.** You radiate an aura of power and conviction that few can resist. Your words can bend the will of others, and your influence spans vast distances.
-* **26-27 (Mod. +8):** **Godlike (Lesser).** Your charisma rivals that of minor deities, granting you the ability to inspire cults, lead nations, or influence the very fabric of social order.
-* **28-29 (Mod. +9):** **Godlike (Greater).** Your charisma is on par with true deities. You can command loyalty from legions of followers and sway even the most powerful of beings with your presence.
-* **30 (Mod. +10):** **Divine.** You are the embodiment of pure charisma. Your presence is irresistible, your words are law, and your force of personality can shape the very beliefs and emotions of others.
-`;
-function getBackstory(stats, pc) {
-  return {
-    system: `You are a helpful dungeon master trained to generate character backstory using Dungeons & Dragons 5th Edition rules in simple sentences in style of famous DM Matt Mercer. 
-    Your task is to provide a descriptive interpretation of a character's attributes based on their numerical values in provided D&D 5e context.`,
-    user: `Given the following D&D 5e attribute scores:
-      Strength: ${stats.strength}
-      Dexterity: ${stats.dexterity}
-      Constitution: ${stats.constitution}
-      Intelligence: ${stats.intelligence}
-      Wisdom: ${stats.wisdom}
-      Charisma: ${stats.charisma}
-      Level: ${stats.dndLevel}
-      Class: ${stats.dndClass}
-      SubClass: ${stats.dndSubclass}
-      Gender: ${pc.protagonist.gender}
-      Race: ${pc.protagonist.race}
-
-    And the following descriptive guidance from D&D 5e rules:
-    ${coreAttributesContent}
-
-    Provide a concise, narrative guiding description of the character's core attributes, incorporating descriptive interpretations. 
-    Focus on how these attributes would manifest in the character's personality, physical presence, and abilities. 
-    Based on the pattern of the attributes add a couple of backstory to explain the outlier attributes tied to the gender and race during upbringing and the eventual growth based on their level to their class and subclass (if applicable). 
-    Provide a current physical description of the character based on their attributes and backstory.
-
-    DO NOT repeat the numerical values of the attributes in your description.
-    DO NOT include numerical modifiers or numbers in your description.
-    Your entire response must be no more than 420 words. Do not exceed this limit. If your answer would be longer, stop at exactly 420 words and do not continue. Do not mention the word count in your answer.`
-  };
-}
-var coreSkillsAndDifficultyCheckContent = `
-In Dungeons & Dragons 5th Edition, there are 18 skills, each tied to one of the six core ability scores (Strength, Dexterity, Constitution, Intelligence, Wisdom, Charisma).
-
-Here's the full list, grouped by their associated ability score:
-
-Strength (STR)
-Athletics: Covers difficult physical tasks like climbing, jumping, and swimming, or feats of strength like grappling.
-
-Dexterity (DEX)
-Acrobatics: Used for maintaining balance, tumbling, flips, or intricate maneuvers.
-Sleight of Hand: For acts of manual trickery, such as picking pockets, concealing objects, or performing illusions with your hands.
-Stealth: For hiding, moving silently, or avoiding detection.
-
-Intelligence (INT)
-Arcana: Measures your knowledge of spells, magic items, arcane symbols, magical traditions, and the planes of existence.
-History: Recalling lore about historical events, legendary figures, ancient kingdoms, and past conflicts.
-Investigation: Used when you're looking for clues, making deductions, and interpreting evidence (e.g., finding a hidden object, discerning the weak point of a structure).
-Nature: Measures your knowledge of terrain, plants, animals, weather, and natural cycles.
-Religion: Recalling lore about deities, rites, prayers, religious hierarchies, holy symbols, and the practices of cults.
-
-Wisdom (WIS)
-Animal Handling: For calming, influencing, or understanding animals.
-Insight: Used to determine the true intentions of a creature, such as detecting lies or predicting someone's next move.
-Medicine: For diagnosing illnesses, stabilizing dying creatures, and administering first aid.
-Perception: For detecting your surroundings, noticing hidden objects, hearing faint sounds, or spotting ambushes. This is often one of the most frequently rolled skills.
-Survival: For tracking, foraging for food and water, navigating wilderness, and identifying natural signs.
-
-Charisma (CHA)
-Deception: For convincingly hiding the truth, whether through lies, misleading actions, or disguises.
-Intimidation: Attempting to influence someone through overt threats, hostile actions, or displays of physical prowess.
-Performance: Used to entertain an audience through music, dance, acting, storytelling, or other forms of showmanship.
-Persuasion: For influencing someone or a group with tact, social graces, or good nature.
-
-In Dungeons & Dragons 5th Edition, DC stands for Difficulty Class. It's a target number that a player must meet or exceed with an ability check, saving throw, or attack roll to succeed at a task. The higher the DC, the harder the task.
-
-While there isn't a strictly defined list for every increment (like DC 1, DC 2, DC 3, etc.), the Dungeon Master's Guide (DMG) and Player's Handbook (PHB) provide guidelines for common DCs and what they represent. Here's a breakdown of the generally accepted DC tiers, their definitions, and examples:
-
-DC 0 (Automatic Success / Trivial)
-
-Definition: A task that is so simple it doesn't even require a roll. There's no real chance of failure unless an external factor interferes.
-Example: Opening an unlocked and unjammed door. Picking up a dropped coin. Taking a step forward.
-DC 1-4 (Very Easy / Trivial but Possible Failure)
-
-Definition: A task that almost anyone could succeed at with minimal effort, but a truly unlucky roll (a natural 1) might still lead to failure. Often used for basic actions where time isn't a factor.
-Example:
-DC 1: Remembering a very common historical fact.
-DC 3: Recognizing a common animal from a distance.
-DC 4: Keeping your balance on a wide, flat beam.
-
-DC 5 (Very Easy)
-Definition: A task that is very simple, and most characters with even a minimal bonus in the relevant ability can succeed without issue.
-Example:
-Recalling common knowledge about a local village.
-Climbing a knotted rope.
-Spotting a large, obvious trap.
-Following a very clear trail.
-
-DC 10 (Easy)
-Definition: A task that requires a bit of effort or focus but is generally achievable for someone with some training or natural aptitude. This is a very common default DC.
-Example:
-Persuading a guard to let you pass with a plausible story.
-Jumping across a 10-foot gap.
-Picking a simple lock.
-Disarming a basic, visible trap.
-Tracking a single creature through soft mud.
-Remembering details about a regional deity.
-
-DC 15 (Medium)
-Definition: A task that presents a noticeable challenge, requiring a character to be competent in the relevant skill or to get lucky. This is the typical DC for moderate challenges.
-Example:
-Convincing a reluctant merchant to give you a discount.
-Climbing a rough, crumbling wall.
-Picking a complex lock.
-Spotting a well-hidden tripwire in a dark hallway.
-Identifying a rare monster from its tracks.
-Recalling obscure lore about an ancient artifact.
-
-DC 20 (Hard)
-Definition: A task that is difficult and requires significant skill, specific training, or excellent luck. Only characters proficient in the relevant skill will consistently succeed.
-Example:
-Calming a panicked crowd during a riot.
-Leaping over a deep chasm.
-Picking a masterwork lock.
-Disarming a complex, magical trap.
-Tracking a ghost through a bustling city street.
-Identifying a rare magical disease.
-
-DC 25 (Very Hard)
-Definition: A task that is exceptionally challenging, often requiring highly specialized skill, extraordinary effort, or powerful magic. Even proficient characters will struggle.
-Example:
-Intimidating a powerful noble or king.
-Breaking free from adamantine manacles.
-Crafting a legendary magic item without proper tools.
-Deactivating a powerful arcane ward.
-Recalling the exact wording of a forgotten prophecy.
-
-DC 30 (Nearly Impossible / Legendary)
-Definition: A task that is incredibly difficult, bordering on the impossible without epic abilities, extreme preparation, or divine intervention. Success implies a truly heroic feat.
-Example:
-Persuading a high-ranking devil to betray its master.
-Single-handedly holding up a collapsing cavern roof.
-Picking a lock on a vault designed by a demigod.
-Disarming a trap that would devastate a small town.
-Reconstructing the true history of a long-lost civilization from fragments.
-
-Key Considerations for DMs:
-Context Matters: The same action can have different DCs depending on the circumstances. (e.g., swimming in calm water vs. swimming in a stormy sea).
-Player Creativity: Reward clever solutions. A good plan might lower the DC, or even negate the need for a roll entirely.
-Consequences of Failure: Failure should be interesting, not just a dead end. What happens if they fail the check?
-Proficiency and Expertise: Characters with proficiency in a skill add their proficiency bonus. Characters with Expertise double their proficiency bonus, making higher DCs more achievable for them.
-`;
-function getChecksPrompt(action, plotType) {
-  let initiativeGuidance = "";
-  if (plotType !== "combat") {
-    initiativeGuidance = `If the action or situation clearly indicates the start of a combat encounter (e.g., an attack, an ambush, a trap being sprung), include an "initiative" check with a difficultyClass of 0 (the actual initiative roll will be handled by the game engine). Do NOT include an "initiative" check if the plotType is already "combat", current plotType is ${plotType}.`;
-  }
-  return {
-    system: `You are a helpful Dungeon Master in Dungeons & Dragons 5th Edition with the play style of famous DM Matt Mercer. Your task is to analyze a given action or situation and determine if a skill check is required, and if so what are the most appropriate D&D 5e skill checks required to resolve it. 
-    ${initiativeGuidance}
-    You must return an array of CheckDefinition objects in JSON format.
-
-    Each CheckDefinition object must have the following properties:
-    - 'type': A string representing the skill (e.g., "athletics", "stealth", "perception") or attribute (e.g., "strength", "dexterity", "intelligence", "wisdom", "charisma", "constitution") being checked, or "to-hit" for attack rolls, or "initiative" for combat initiation.
-    - 'difficultyClass': A number representing the target number to beat for a successful check, or the AC of the target if this is an attack roll "to-hit".
-    - 'modifiers': An optional array of strings representing the character attributes relevant to the check (e.g., ["strength", "dexterity"]).
-
-    Your output must be a JSON array of CheckDefinition objects, and nothing else. For example:
-    [
-      {
-        "type": "stealth",
-        "difficultyClass": 5,
-        "modifiers": ["dexterity"]
-      },
-      {
-        "type": "perception",
-        "difficultyClass": 10,
-        "modifiers": ["wisdom"]
-      }
-
-    ]
-
-    You should consider the context of the action/situation and the typical challenges associated with it in a D&D 5e setting. 
-    If multiple checks are appropriate, list them all. 
-    Trivial tasks like accepting an offer, believing in someone, giving or receiving an item/goods are automatic success so all difficultyClass for these are set to 0,
-    Here are the D&D 5e core skills and guidelines for difficulty classes:
-    ${coreSkillsAndDifficultyCheckContent}`,
-    user: ` Given the situation/action: "${action}", does it require a skill check?
-    if so which D&D 5e skill check(s) / saving throw is required? If multiple checks are appropriate, list them all.
-    if you can not determine what specific check is needed, return an empty array.
-    Trivial actions like accepting a task/quest or acknowledge someone's point of view is auto success so all difficultyClass for these are set to 0
-    Provide your answer as a JSON array of CheckDefinition objects.`
-  };
-}
-function getConsequenceGuidancePrompt(sceneNarration, actionText, checkResult) {
-  const allCheckResults = checkResult.length > 0 ? `Check Results:
-${checkResult.join("\n")}` : "No specific checks were needed for this action.";
-  return {
-    system: `You are a helpful dungeon master trained to generate consequence statements using Dungeons & Dragons 5th Edition rules in simple sentences of 10 words or less. 
-    Your ONLY task is to use the provided scene, action, and D&D 5e skill check results to generate the outcome of the "Action Taken".
-     - Consider how close the roll was to the Difficulty Class (DC). A natural 1 on the roll is a critical failure, and a natural 20 is a critical success.
-     - Based on your interpretation, provide simple and concise narrative guidance for the consequences of the action like:
-       - what information gained/missed, 
-       - item exchanged, 
-       - key item lost, 
-       - altering relationship, 
-       - leads to combat, 
-       - or disastrous outcome, etc... 
-    Your entire response must be no more than 10 words per guidance. Do not exceed this limit. If your answer would be longer, stop at exactly 10 words per guidance and do not continue. Do not mention the word count in your answer. 
-    They must be short, clear and concise of possible ideas based on the situation in one single sentence per check result if it is provided. For example:
-    ** If the check results is "Stealth check (DC 15): Roll 18 (Success)", you should say "You successfully sneak past the guards unnoticed."
-     
-
-
-******
-
-
-
-    If multiple checks are provided, give a separate guidance for each check result.
-    If no checks were needed, provide a single concise guidance based on the action and scene like "You agree to join so and so in their quest. so and so are now your ally."
-    If the action is trivial (DC 0), it is considered an automatic success, so provide guidance accordingly like "You easily accomplish the task without any issues."
-    Do NOT mention the check results, DC, or roll numbers in your guidance.
-    Do NOT suggest new actions or next steps, only focus on the consequences of the action taken.
-    Do NOT make up new information not implied by the scene or action.
-    Do NOT repeat information already present in the scene or action text.`,
-    user: `If no action is described after Action taken then you MUST ONLY return a single space " "! If action is provided then provide guidance in simple and concise sentence, focused on the action's outcome, limited to the following:
-    Base on the following scene and action, ONLY provide the guidance based on the action's outcome.
-    ***** Current scene:
-    ${sceneNarration}
-    *****
-
-    ***** Action taken:
-    ${actionText}
-    *****
-
-    ***** Check results (if any):
-    ${allCheckResults}
-    *****
-    
-
-
-******
-
-
-
-    Base on these you will only provide objective ANSWERS, in single concise guidance statement of less than 10 words per guidance.
-    - Is there any information gained/missed, what information?
-    - Is there any item exchanged, what item?
-    - Is there any key item lost, what item?
-    - Is there any relationship altered, who is affected and how?
-    - Is there any ally or enemy gained/lost, who?
-    - Does this lead to combat, chase, or negotiation?
-    - Is this consequence ends in a disastrous outcome, what is it?
-     Your entire response must be no more than 10 words per guidance. Do not exceed this limit. If your answer would be longer, stop at exactly 10 words per guidance and do not continue. Do not mention the word count in your answer. 
-    They must be short, clear and concise of possible ideas based on the situation in one single sentence per check result if it is provided. 
-    
-
-
-******
-
-
-
-    For example:
-    If the check results is "Stealth check (DC 15): Roll 18 (Success)", you should say "You successfully sneak past the guards unnoticed."
-    
-
-
-******
-
-
-
-    If multiple checks are provided, give a separate guidance for each check result.
-    If no checks were needed, provide a single concise guidance based on the action and scene like "You agree to join so and so in their quest. so and so are now your ally."
-    If the action is trivial (DC 0), it is considered an automatic success, so provide guidance accordingly like "You easily accomplish the task without any issues."
-    Do NOT mention the check results, DC, or roll numbers in your guidance.
-    Do NOT suggest new actions or next steps, only focus on the consequences of the action taken.
-    Do NOT make up new information not implied by the scene or action.
-    Do NOT repeat information already present in the scene or action text.`
-  };
-}
-var dndRulesDMStyle = "Ensure your narration aligns with D&D 5e fantasy themes, character abilities, and typical role-playing scenarios that the famous DM Matt Mercer would narrate.";
-var dndRulesCombat = "Narrate this as a dynamic combat scene, focusing on action and character reactions, adhering to D&D 5e combat rules.";
-function getDndNarrationGuidance(eventType) {
-  let guidance = "";
-  if (eventType === "combat") {
-    guidance += dndRulesCombat;
-  } else {
-    guidance += dndRulesDMStyle;
-  }
-  return guidance;
-}
-function getLocationChangePrompt(previousLocationName, newLocationName, newLocationDescription, presentCharactersInfo, newLocationTrigger) {
-  return {
-    system: "You are an story plot line author. Your goal is to maintain story continuity focusing on the protagonist's journey, character growth, development and goals.",
-    user: `The protagonist has physically traveled to ${newLocationName}. ${newLocationDescription} FROM ${previousLocationName}. 
- 
-        The transition was triggered by: "${newLocationTrigger}". If trigger is empty then this is a start of a new story. 
-         
-        There are ${presentCharactersInfo} in this new location but don't mention them if they haven't met protagonist yet from previous scene. 
-        They may not all be in the same visible vicinity of the protagonist, 
-        They may not all be friendly or allied to the protagonist, 
-        They may not all be aware of the protagonist's presence.
-        Use this information as context to Narrate this transition in 2 Sentences below: 
- 
-        In a simple single sentence describe the reason for the new scene in the continuity of the story (e.g., continuing a quest, seeking something, fleeing) in 100 words or less. 
- 
-        In a simple single sentences describe the new location's immediate relevance to the protagonist's ongoing plot or implied goal in 100 words or less. 
- 
-        Ensure your narration aligns with D&D 5e fantasy themes, character abilities, and suitable for role-playing scenarios and no more than 200 words in total.`
-  };
-}
-function getCombatantsPrompt(sceneNarration, protagonistName) {
-  return {
-    system: "You are an expert DM in Dungeons & Dragons 5th Edition in the narrative style of famous DM Matt Mercer.",
-    user: `Based on the following scene narration, identify the combat participants: 
-    
-    Scene: ${sceneNarration} 
-    Protagonist: ${protagonistName} 
-    
-    Provide a JSON object with the following structure:
-    { "friendlyCharacters": [
-    { "name": "Protagonist's Name" },
-    { "name": "Ally 1 Name" }
-    ],
-      "namedEnemies": [
-    { "name": "Enemy 1 Name" },
-    { "name": "Enemy 2 Name" }
-    ],
-      "unnamedEnemiesCount": 0,
-      "encounterDescription": "A brief description of the combat encounter."
-    }`
-  };
-}
-
 // ../../node_modules/zod/dist/esm/v4/core/index.js
 var core_exports2 = {};
 __export(core_exports2, {
@@ -4762,7 +247,7 @@ __export(core_exports2, {
   globalRegistry: () => globalRegistry,
   isValidBase64: () => isValidBase64,
   isValidBase64URL: () => isValidBase64URL,
-  isValidJWT: () => isValidJWT2,
+  isValidJWT: () => isValidJWT,
   locales: () => locales_exports,
   parse: () => parse,
   parseAsync: () => parseAsync,
@@ -4864,11 +349,11 @@ __export(util_exports, {
   escapeRegex: () => escapeRegex,
   extend: () => extend,
   finalizeIssue: () => finalizeIssue,
-  floatSafeRemainder: () => floatSafeRemainder2,
+  floatSafeRemainder: () => floatSafeRemainder,
   getElementAtPath: () => getElementAtPath,
   getEnumValues: () => getEnumValues,
   getLengthableOrigin: () => getLengthableOrigin,
-  getParsedType: () => getParsedType2,
+  getParsedType: () => getParsedType,
   getSizableOrigin: () => getSizableOrigin,
   isObject: () => isObject,
   isPlainObject: () => isPlainObject,
@@ -4939,7 +424,7 @@ function cleanRegex(source) {
   const end = source.endsWith("$") ? source.length - 1 : source.length;
   return source.slice(start, end);
 }
-function floatSafeRemainder2(val, step) {
+function floatSafeRemainder(val, step) {
   const valDecCount = (val.toString().split(".")[1] || "").length;
   const stepDecCount = (step.toString().split(".")[1] || "").length;
   const decCount = valDecCount > stepDecCount ? valDecCount : stepDecCount;
@@ -5043,7 +528,7 @@ function numKeys(data) {
   }
   return keyCount;
 }
-var getParsedType2 = (data) => {
+var getParsedType = (data) => {
   const t = typeof data;
   switch (t) {
     case "undefined":
@@ -5650,8 +1135,8 @@ function datetime(args) {
     opts.push("");
   if (args.offset)
     opts.push(`([+-]\\d{2}:\\d{2})`);
-  const timeRegex2 = `${time3}(?:${opts.join("|")})`;
-  return new RegExp(`^${dateSource}T(?:${timeRegex2})$`);
+  const timeRegex = `${time3}(?:${opts.join("|")})`;
+  return new RegExp(`^${dateSource}T(?:${timeRegex})$`);
 }
 var string = (params) => {
   var _a, _b;
@@ -5748,7 +1233,7 @@ var $ZodCheckMultipleOf = /* @__PURE__ */ $constructor("$ZodCheckMultipleOf", (i
   inst._zod.check = (payload) => {
     if (typeof payload.value !== typeof def.value)
       throw new Error("Cannot mix number and bigint in multiple_of check.");
-    const isMultiple = typeof payload.value === "bigint" ? payload.value % def.value === BigInt(0) : floatSafeRemainder2(payload.value, def.value) === 0;
+    const isMultiple = typeof payload.value === "bigint" ? payload.value % def.value === BigInt(0) : floatSafeRemainder(payload.value, def.value) === 0;
     if (isMultiple)
       return;
     payload.issues.push({
@@ -6280,14 +1765,14 @@ var $ZodType = /* @__PURE__ */ $constructor("$ZodType", (inst, def) => {
     });
   } else {
     const runChecks = (payload, checks2, ctx) => {
-      let isAborted2 = aborted(payload);
+      let isAborted = aborted(payload);
       let asyncResult;
       for (const ch of checks2) {
         if (ch._zod.when) {
           const shouldRun = ch._zod.when(payload);
           if (!shouldRun)
             continue;
-        } else if (isAborted2) {
+        } else if (isAborted) {
           continue;
         }
         const currLen = payload.issues.length;
@@ -6301,15 +1786,15 @@ var $ZodType = /* @__PURE__ */ $constructor("$ZodType", (inst, def) => {
             const nextLen = payload.issues.length;
             if (nextLen === currLen)
               return;
-            if (!isAborted2)
-              isAborted2 = aborted(payload, currLen);
+            if (!isAborted)
+              isAborted = aborted(payload, currLen);
           });
         } else {
           const nextLen = payload.issues.length;
           if (nextLen === currLen)
             continue;
-          if (!isAborted2)
-            isAborted2 = aborted(payload, currLen);
+          if (!isAborted)
+            isAborted = aborted(payload, currLen);
         }
       }
       if (asyncResult) {
@@ -6628,7 +2113,7 @@ var $ZodE164 = /* @__PURE__ */ $constructor("$ZodE164", (inst, def) => {
   (_a = def.pattern) != null ? _a : def.pattern = e164;
   $ZodStringFormat.init(inst, def);
 });
-function isValidJWT2(token, algorithm = null) {
+function isValidJWT(token, algorithm = null) {
   try {
     const tokensParts = token.split(".");
     if (tokensParts.length !== 3)
@@ -6649,7 +2134,7 @@ function isValidJWT2(token, algorithm = null) {
 var $ZodJWT = /* @__PURE__ */ $constructor("$ZodJWT", (inst, def) => {
   $ZodStringFormat.init(inst, def);
   inst._zod.check = (payload) => {
-    if (isValidJWT2(payload.value, def.alg))
+    if (isValidJWT(payload.value, def.alg))
       return;
     payload.issues.push({
       code: "invalid_format",
@@ -7200,7 +2685,7 @@ var $ZodIntersection = /* @__PURE__ */ $constructor("$ZodIntersection", (inst, d
     return handleIntersectionResults(payload, left, right);
   };
 });
-function mergeValues2(a, b) {
+function mergeValues(a, b) {
   if (a === b) {
     return { valid: true, data: a };
   }
@@ -7212,7 +2697,7 @@ function mergeValues2(a, b) {
     const sharedKeys = Object.keys(a).filter((key) => bKeys.indexOf(key) !== -1);
     const newObj = __spreadValues(__spreadValues({}, a), b);
     for (const key of sharedKeys) {
-      const sharedValue = mergeValues2(a[key], b[key]);
+      const sharedValue = mergeValues(a[key], b[key]);
       if (!sharedValue.valid) {
         return {
           valid: false,
@@ -7231,7 +2716,7 @@ function mergeValues2(a, b) {
     for (let index = 0; index < a.length; index++) {
       const itemA = a[index];
       const itemB = b[index];
-      const sharedValue = mergeValues2(itemA, itemB);
+      const sharedValue = mergeValues(itemA, itemB);
       if (!sharedValue.valid) {
         return {
           valid: false,
@@ -7253,7 +2738,7 @@ function handleIntersectionResults(result, left, right) {
   }
   if (aborted(result))
     return result;
-  const merged = mergeValues2(left.value, right.value);
+  const merged = mergeValues(left.value, right.value);
   if (!merged.valid) {
     throw new Error(`Unmergable intersection. Error path: ${JSON.stringify(merged.mergeErrorPath)}`);
   }
@@ -7889,7 +3374,7 @@ __export(locales_exports, {
   ca: () => ca_default,
   cs: () => cs_default,
   de: () => de_default,
-  en: () => en_default2,
+  en: () => en_default,
   es: () => es_default,
   fa: () => fa_default,
   fi: () => fi_default,
@@ -8820,7 +4305,7 @@ var error7 = () => {
     }
   };
 };
-function en_default2() {
+function en_default() {
   return {
     localeError: error7()
   };
@@ -14306,7 +9791,7 @@ var initializer2 = (inst, issues) => {
     }
   });
 };
-var ZodError2 = $constructor("ZodError", initializer2);
+var ZodError = $constructor("ZodError", initializer2);
 var ZodRealError = $constructor("ZodError", initializer2, {
   Parent: Error
 });
@@ -14318,7 +9803,7 @@ var safeParse2 = /* @__PURE__ */ _safeParse(ZodRealError);
 var safeParseAsync2 = /* @__PURE__ */ _safeParseAsync(ZodRealError);
 
 // ../../node_modules/zod/dist/esm/v4/classic/schemas.js
-var ZodType2 = /* @__PURE__ */ $constructor("ZodType", (inst, def) => {
+var ZodType = /* @__PURE__ */ $constructor("ZodType", (inst, def) => {
   $ZodType.init(inst, def);
   inst.def = def;
   Object.defineProperty(inst, "_def", { value: def });
@@ -14388,7 +9873,7 @@ var ZodType2 = /* @__PURE__ */ $constructor("ZodType", (inst, def) => {
 var _ZodString = /* @__PURE__ */ $constructor("_ZodString", (inst, def) => {
   var _a, _b, _c;
   $ZodString.init(inst, def);
-  ZodType2.init(inst, def);
+  ZodType.init(inst, def);
   const bag = inst._zod.bag;
   inst.format = (_a = bag.format) != null ? _a : null;
   inst.minLength = (_b = bag.minimum) != null ? _b : null;
@@ -14408,7 +9893,7 @@ var _ZodString = /* @__PURE__ */ $constructor("_ZodString", (inst, def) => {
   inst.toLowerCase = () => inst.check(_toLowerCase());
   inst.toUpperCase = () => inst.check(_toUpperCase());
 });
-var ZodString2 = /* @__PURE__ */ $constructor("ZodString", (inst, def) => {
+var ZodString = /* @__PURE__ */ $constructor("ZodString", (inst, def) => {
   $ZodString.init(inst, def);
   _ZodString.init(inst, def);
   inst.email = (params) => inst.check(_email(ZodEmail, params));
@@ -14440,7 +9925,7 @@ var ZodString2 = /* @__PURE__ */ $constructor("ZodString", (inst, def) => {
   inst.duration = (params) => inst.check(duration2(params));
 });
 function string2(params) {
-  return _string(ZodString2, params);
+  return _string(ZodString, params);
 }
 var ZodStringFormat = /* @__PURE__ */ $constructor("ZodStringFormat", (inst, def) => {
   $ZodStringFormat.init(inst, def);
@@ -14522,10 +10007,10 @@ var ZodJWT = /* @__PURE__ */ $constructor("ZodJWT", (inst, def) => {
   $ZodJWT.init(inst, def);
   ZodStringFormat.init(inst, def);
 });
-var ZodNumber2 = /* @__PURE__ */ $constructor("ZodNumber", (inst, def) => {
+var ZodNumber = /* @__PURE__ */ $constructor("ZodNumber", (inst, def) => {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i;
   $ZodNumber.init(inst, def);
-  ZodType2.init(inst, def);
+  ZodType.init(inst, def);
   inst.gt = (value, params) => inst.check(_gt(value, params));
   inst.gte = (value, params) => inst.check(_gte(value, params));
   inst.min = (value, params) => inst.check(_gte(value, params));
@@ -14549,23 +10034,26 @@ var ZodNumber2 = /* @__PURE__ */ $constructor("ZodNumber", (inst, def) => {
   inst.format = (_i = bag.format) != null ? _i : null;
 });
 function number2(params) {
-  return _number(ZodNumber2, params);
+  return _number(ZodNumber, params);
 }
 var ZodNumberFormat = /* @__PURE__ */ $constructor("ZodNumberFormat", (inst, def) => {
   $ZodNumberFormat.init(inst, def);
-  ZodNumber2.init(inst, def);
+  ZodNumber.init(inst, def);
 });
 function int(params) {
   return _int(ZodNumberFormat, params);
 }
-var ZodBoolean2 = /* @__PURE__ */ $constructor("ZodBoolean", (inst, def) => {
+var ZodBoolean = /* @__PURE__ */ $constructor("ZodBoolean", (inst, def) => {
   $ZodBoolean.init(inst, def);
-  ZodType2.init(inst, def);
+  ZodType.init(inst, def);
 });
-var ZodBigInt2 = /* @__PURE__ */ $constructor("ZodBigInt", (inst, def) => {
+function boolean2(params) {
+  return _boolean(ZodBoolean, params);
+}
+var ZodBigInt = /* @__PURE__ */ $constructor("ZodBigInt", (inst, def) => {
   var _a, _b, _c;
   $ZodBigInt.init(inst, def);
-  ZodType2.init(inst, def);
+  ZodType.init(inst, def);
   inst.gte = (value, params) => inst.check(_gte(value, params));
   inst.min = (value, params) => inst.check(_gte(value, params));
   inst.gt = (value, params) => inst.check(_gt(value, params));
@@ -14584,32 +10072,32 @@ var ZodBigInt2 = /* @__PURE__ */ $constructor("ZodBigInt", (inst, def) => {
   inst.maxValue = (_b = bag.maximum) != null ? _b : null;
   inst.format = (_c = bag.format) != null ? _c : null;
 });
-var ZodUnknown2 = /* @__PURE__ */ $constructor("ZodUnknown", (inst, def) => {
+var ZodUnknown = /* @__PURE__ */ $constructor("ZodUnknown", (inst, def) => {
   $ZodUnknown.init(inst, def);
-  ZodType2.init(inst, def);
+  ZodType.init(inst, def);
 });
 function unknown() {
-  return _unknown(ZodUnknown2);
+  return _unknown(ZodUnknown);
 }
-var ZodNever2 = /* @__PURE__ */ $constructor("ZodNever", (inst, def) => {
+var ZodNever = /* @__PURE__ */ $constructor("ZodNever", (inst, def) => {
   $ZodNever.init(inst, def);
-  ZodType2.init(inst, def);
+  ZodType.init(inst, def);
 });
 function never(params) {
-  return _never(ZodNever2, params);
+  return _never(ZodNever, params);
 }
-var ZodDate2 = /* @__PURE__ */ $constructor("ZodDate", (inst, def) => {
+var ZodDate = /* @__PURE__ */ $constructor("ZodDate", (inst, def) => {
   $ZodDate.init(inst, def);
-  ZodType2.init(inst, def);
+  ZodType.init(inst, def);
   inst.min = (value, params) => inst.check(_gte(value, params));
   inst.max = (value, params) => inst.check(_lte(value, params));
   const c = inst._zod.bag;
   inst.minDate = c.minimum ? new Date(c.minimum) : null;
   inst.maxDate = c.maximum ? new Date(c.maximum) : null;
 });
-var ZodArray2 = /* @__PURE__ */ $constructor("ZodArray", (inst, def) => {
+var ZodArray = /* @__PURE__ */ $constructor("ZodArray", (inst, def) => {
   $ZodArray.init(inst, def);
-  ZodType2.init(inst, def);
+  ZodType.init(inst, def);
   inst.element = def.element;
   inst.min = (minLength, params) => inst.check(_minLength(minLength, params));
   inst.nonempty = (params) => inst.check(_minLength(1, params));
@@ -14618,11 +10106,11 @@ var ZodArray2 = /* @__PURE__ */ $constructor("ZodArray", (inst, def) => {
   inst.unwrap = () => inst.element;
 });
 function array(element, params) {
-  return _array(ZodArray2, element, params);
+  return _array(ZodArray, element, params);
 }
-var ZodObject2 = /* @__PURE__ */ $constructor("ZodObject", (inst, def) => {
+var ZodObject = /* @__PURE__ */ $constructor("ZodObject", (inst, def) => {
   $ZodObject.init(inst, def);
-  ZodType2.init(inst, def);
+  ZodType.init(inst, def);
   util_exports.defineLazy(inst, "shape", () => def.shape);
   inst.keyof = () => _enum2(Object.keys(inst._zod.def.shape));
   inst.catchall = (catchall) => inst.clone(__spreadProps(__spreadValues({}, inst._zod.def), { catchall }));
@@ -14636,7 +10124,7 @@ var ZodObject2 = /* @__PURE__ */ $constructor("ZodObject", (inst, def) => {
   inst.merge = (other) => util_exports.merge(inst, other);
   inst.pick = (mask) => util_exports.pick(inst, mask);
   inst.omit = (mask) => util_exports.omit(inst, mask);
-  inst.partial = (...args) => util_exports.partial(ZodOptional2, inst, args[0]);
+  inst.partial = (...args) => util_exports.partial(ZodOptional, inst, args[0]);
   inst.required = (...args) => util_exports.required(ZodNonOptional, inst, args[0]);
 });
 function object(shape, params) {
@@ -14647,33 +10135,33 @@ function object(shape, params) {
       return this.shape;
     }
   }, util_exports.normalizeParams(params));
-  return new ZodObject2(def);
+  return new ZodObject(def);
 }
-var ZodUnion2 = /* @__PURE__ */ $constructor("ZodUnion", (inst, def) => {
+var ZodUnion = /* @__PURE__ */ $constructor("ZodUnion", (inst, def) => {
   $ZodUnion.init(inst, def);
-  ZodType2.init(inst, def);
+  ZodType.init(inst, def);
   inst.options = def.options;
 });
 function union(options, params) {
-  return new ZodUnion2(__spreadValues({
+  return new ZodUnion(__spreadValues({
     type: "union",
     options
   }, util_exports.normalizeParams(params)));
 }
-var ZodIntersection2 = /* @__PURE__ */ $constructor("ZodIntersection", (inst, def) => {
+var ZodIntersection = /* @__PURE__ */ $constructor("ZodIntersection", (inst, def) => {
   $ZodIntersection.init(inst, def);
-  ZodType2.init(inst, def);
+  ZodType.init(inst, def);
 });
 function intersection(left, right) {
-  return new ZodIntersection2({
+  return new ZodIntersection({
     type: "intersection",
     left,
     right
   });
 }
-var ZodEnum2 = /* @__PURE__ */ $constructor("ZodEnum", (inst, def) => {
+var ZodEnum = /* @__PURE__ */ $constructor("ZodEnum", (inst, def) => {
   $ZodEnum.init(inst, def);
-  ZodType2.init(inst, def);
+  ZodType.init(inst, def);
   inst.enum = def.entries;
   inst.options = Object.values(def.entries);
   const keys = new Set(Object.keys(def.entries));
@@ -14685,7 +10173,7 @@ var ZodEnum2 = /* @__PURE__ */ $constructor("ZodEnum", (inst, def) => {
       } else
         throw new Error(`Key ${value} not found in enum`);
     }
-    return new ZodEnum2(__spreadProps(__spreadValues(__spreadProps(__spreadValues({}, def), {
+    return new ZodEnum(__spreadProps(__spreadValues(__spreadProps(__spreadValues({}, def), {
       checks: []
     }), util_exports.normalizeParams(params)), {
       entries: newEntries
@@ -14699,7 +10187,7 @@ var ZodEnum2 = /* @__PURE__ */ $constructor("ZodEnum", (inst, def) => {
       } else
         throw new Error(`Key ${value} not found in enum`);
     }
-    return new ZodEnum2(__spreadProps(__spreadValues(__spreadProps(__spreadValues({}, def), {
+    return new ZodEnum(__spreadProps(__spreadValues(__spreadProps(__spreadValues({}, def), {
       checks: []
     }), util_exports.normalizeParams(params)), {
       entries: newEntries
@@ -14708,14 +10196,14 @@ var ZodEnum2 = /* @__PURE__ */ $constructor("ZodEnum", (inst, def) => {
 });
 function _enum2(values, params) {
   const entries = Array.isArray(values) ? Object.fromEntries(values.map((v) => [v, v])) : values;
-  return new ZodEnum2(__spreadValues({
+  return new ZodEnum(__spreadValues({
     type: "enum",
     entries
   }, util_exports.normalizeParams(params)));
 }
 var ZodTransform = /* @__PURE__ */ $constructor("ZodTransform", (inst, def) => {
   $ZodTransform.init(inst, def);
-  ZodType2.init(inst, def);
+  ZodType.init(inst, def);
   inst._zod.parse = (payload, _ctx) => {
     payload.addIssue = (issue2) => {
       var _a, _b, _c, _d;
@@ -14749,36 +10237,36 @@ function transform(fn) {
     transform: fn
   });
 }
-var ZodOptional2 = /* @__PURE__ */ $constructor("ZodOptional", (inst, def) => {
+var ZodOptional = /* @__PURE__ */ $constructor("ZodOptional", (inst, def) => {
   $ZodOptional.init(inst, def);
-  ZodType2.init(inst, def);
+  ZodType.init(inst, def);
   inst.unwrap = () => inst._zod.def.innerType;
 });
 function optional(innerType) {
-  return new ZodOptional2({
+  return new ZodOptional({
     type: "optional",
     innerType
   });
 }
-var ZodNullable2 = /* @__PURE__ */ $constructor("ZodNullable", (inst, def) => {
+var ZodNullable = /* @__PURE__ */ $constructor("ZodNullable", (inst, def) => {
   $ZodNullable.init(inst, def);
-  ZodType2.init(inst, def);
+  ZodType.init(inst, def);
   inst.unwrap = () => inst._zod.def.innerType;
 });
 function nullable(innerType) {
-  return new ZodNullable2({
+  return new ZodNullable({
     type: "nullable",
     innerType
   });
 }
-var ZodDefault2 = /* @__PURE__ */ $constructor("ZodDefault", (inst, def) => {
+var ZodDefault = /* @__PURE__ */ $constructor("ZodDefault", (inst, def) => {
   $ZodDefault.init(inst, def);
-  ZodType2.init(inst, def);
+  ZodType.init(inst, def);
   inst.unwrap = () => inst._zod.def.innerType;
   inst.removeDefault = inst.unwrap;
 });
 function _default2(innerType, defaultValue) {
-  return new ZodDefault2({
+  return new ZodDefault({
     type: "default",
     innerType,
     get defaultValue() {
@@ -14788,7 +10276,7 @@ function _default2(innerType, defaultValue) {
 }
 var ZodPrefault = /* @__PURE__ */ $constructor("ZodPrefault", (inst, def) => {
   $ZodPrefault.init(inst, def);
-  ZodType2.init(inst, def);
+  ZodType.init(inst, def);
   inst.unwrap = () => inst._zod.def.innerType;
 });
 function prefault(innerType, defaultValue) {
@@ -14802,7 +10290,7 @@ function prefault(innerType, defaultValue) {
 }
 var ZodNonOptional = /* @__PURE__ */ $constructor("ZodNonOptional", (inst, def) => {
   $ZodNonOptional.init(inst, def);
-  ZodType2.init(inst, def);
+  ZodType.init(inst, def);
   inst.unwrap = () => inst._zod.def.innerType;
 });
 function nonoptional(innerType, params) {
@@ -14811,14 +10299,14 @@ function nonoptional(innerType, params) {
     innerType
   }, util_exports.normalizeParams(params)));
 }
-var ZodCatch2 = /* @__PURE__ */ $constructor("ZodCatch", (inst, def) => {
+var ZodCatch = /* @__PURE__ */ $constructor("ZodCatch", (inst, def) => {
   $ZodCatch.init(inst, def);
-  ZodType2.init(inst, def);
+  ZodType.init(inst, def);
   inst.unwrap = () => inst._zod.def.innerType;
   inst.removeCatch = inst.unwrap;
 });
 function _catch2(innerType, catchValue) {
-  return new ZodCatch2({
+  return new ZodCatch({
     type: "catch",
     innerType,
     catchValue: typeof catchValue === "function" ? catchValue : () => catchValue
@@ -14826,7 +10314,7 @@ function _catch2(innerType, catchValue) {
 }
 var ZodPipe = /* @__PURE__ */ $constructor("ZodPipe", (inst, def) => {
   $ZodPipe.init(inst, def);
-  ZodType2.init(inst, def);
+  ZodType.init(inst, def);
   inst.in = def.in;
   inst.out = def.out;
 });
@@ -14838,19 +10326,19 @@ function pipe(in_, out) {
     // ...util.normalizeParams(params),
   });
 }
-var ZodReadonly2 = /* @__PURE__ */ $constructor("ZodReadonly", (inst, def) => {
+var ZodReadonly = /* @__PURE__ */ $constructor("ZodReadonly", (inst, def) => {
   $ZodReadonly.init(inst, def);
-  ZodType2.init(inst, def);
+  ZodType.init(inst, def);
 });
 function readonly(innerType) {
-  return new ZodReadonly2({
+  return new ZodReadonly({
     type: "readonly",
     innerType
   });
 }
 var ZodCustom = /* @__PURE__ */ $constructor("ZodCustom", (inst, def) => {
   $ZodCustom.init(inst, def);
-  ZodType2.init(inst, def);
+  ZodType.init(inst, def);
 });
 function check(fn, params) {
   const ch = new $ZodCheck(__spreadValues({
@@ -14885,7 +10373,7 @@ function superRefine(fn, params) {
 }
 
 // ../../node_modules/zod/dist/esm/v4/classic/compat.js
-var INVALID2 = Object.freeze({
+var INVALID = Object.freeze({
   status: "aborted"
 });
 
@@ -14893,29 +10381,871 @@ var INVALID2 = Object.freeze({
 var coerce_exports = {};
 __export(coerce_exports, {
   bigint: () => bigint2,
-  boolean: () => boolean2,
+  boolean: () => boolean3,
   date: () => date3,
   number: () => number3,
   string: () => string3
 });
 function string3(params) {
-  return _coercedString(ZodString2, params);
+  return _coercedString(ZodString, params);
 }
 function number3(params) {
-  return _coercedNumber(ZodNumber2, params);
+  return _coercedNumber(ZodNumber, params);
 }
-function boolean2(params) {
-  return _coercedBoolean(ZodBoolean2, params);
+function boolean3(params) {
+  return _coercedBoolean(ZodBoolean, params);
 }
 function bigint2(params) {
-  return _coercedBigint(ZodBigInt2, params);
+  return _coercedBigint(ZodBigInt, params);
 }
 function date3(params) {
-  return _coercedDate(ZodDate2, params);
+  return _coercedDate(ZodDate, params);
 }
 
 // ../../node_modules/zod/dist/esm/v4/classic/external.js
-config(en_default2());
+config(en_default());
+
+// src/pluginData.ts
+var PlotType = _enum2(["general", "combat", "puzzle", "chase", "roleplay", "shop"]);
+var CombatantSchema = object({
+  id: string2(),
+  // Character name
+  characterIndex: number2().int(),
+  // Link to state.characters by index
+  currentHp: number2().int(),
+  maxHp: number2().int(),
+  status: _enum2(["active", "unconscious", "dead", "fled", "surrendered"]),
+  isFriendly: boolean2(),
+  // Added "Friendly" flag for allies
+  initiativeRoll: number2().int()
+});
+var BattleSchema = object({
+  roundNumber: number2().int(),
+  combatants: array(CombatantSchema),
+  combatLog: array(string2())
+});
+var CombatActionSchema = object({
+  actorId: string2(),
+  actionType: _enum2(["Attack", "CastSpell", "Dash", "Dodge", "Disengage", "Help", "Hide", "Ready", "Search", "UseObject", "Move", "Other"]),
+  targetId: string2().optional(),
+  description: string2()
+});
+var CombatRoundActionsSchema = array(CombatActionSchema);
+var DnDStatsSchema = object({
+  strength: number2().int().min(1).max(20),
+  dexterity: number2().int().min(1).max(20),
+  constitution: number2().int().min(1).max(20),
+  intelligence: number2().int().min(1).max(20),
+  wisdom: number2().int().min(1).max(20),
+  charisma: number2().int().min(1).max(20),
+  hp: number2().int().default(10),
+  // HP for the character
+  hpMax: number2().int().default(10),
+  // Max HP for the character
+  dndExp: number2().int().min(0).default(0),
+  // Experience points, default to 0
+  dndLevel: number2().int().min(1).max(20).default(1),
+  // Character level, default to 1
+  dndClass: string2(),
+  dndSubclass: string2(),
+  plotType: PlotType.default("general"),
+  // Default to general
+  encounter: BattleSchema.optional(),
+  // Holds battle data when plotType is "combat"
+  backstory: string2().optional()
+  // To store the initial character creation backstory
+});
+function suggestDefaultClass(stats) {
+  const { strength, dexterity, constitution, intelligence, wisdom, charisma } = stats;
+  const statArr = [
+    { key: "strength", value: strength },
+    { key: "dexterity", value: dexterity },
+    { key: "constitution", value: constitution },
+    { key: "intelligence", value: intelligence },
+    { key: "wisdom", value: wisdom },
+    { key: "charisma", value: charisma }
+  ];
+  statArr.sort((a, b) => b.value - a.value);
+  const top = statArr[0];
+  const second = statArr[1];
+  switch (top.key) {
+    case "strength":
+      return "Fighter";
+    case "dexterity":
+      if (second.key === "wisdom") return "Ranger";
+      return "Rogue";
+    case "intelligence":
+      return "Wizard";
+    case "constitution":
+      if (second.key === "strength") return "Barbarian";
+      if (second.key === "wisdom") return "Druid";
+      if (second.key === "intelligence") return "Wizard";
+      if (second.key === "charisma") return "Sorcerer";
+      if (second.key === "dexterity") return "Rogue";
+      return "Fighter";
+    case "wisdom":
+      if (second.key === "dexterity") return "Monk";
+      return "Cleric";
+    case "charisma":
+      if (strength >= 13) return "Paladin";
+      if (second.key === "constitution") return "Warlock";
+      return "Bard";
+    default:
+      return "Fighter";
+  }
+}
+var generateDefaultDnDStats = (rpgDiceRoller) => {
+  const rollFormula = "4d6dl1";
+  const rollAttribute = () => new rpgDiceRoller.DiceRoll(rollFormula).total;
+  const generatedStats = {
+    strength: rollAttribute(),
+    dexterity: rollAttribute(),
+    constitution: rollAttribute(),
+    intelligence: rollAttribute(),
+    wisdom: rollAttribute(),
+    charisma: rollAttribute(),
+    hp: 10,
+    // Default starting HP
+    hpMax: 10,
+    // Default max HP
+    dndLevel: 1,
+    // Default level
+    dndExp: 0,
+    // Default experience points
+    dndClass: "",
+    dndSubclass: "",
+    plotType: PlotType.enum.general,
+    encounter: void 0,
+    backstory: ""
+  };
+  const suggestedClass = suggestDefaultClass(generatedStats);
+  return __spreadProps(__spreadValues({}, generatedStats), {
+    dndClass: suggestedClass
+    //dndSubclass: suggestedSubclass,
+  });
+};
+var DnDClassData = {
+  "Barbarian": [
+    "Path of the Berserker",
+    "Path of the Totem Warrior",
+    "Path of the Ancestral Guardian",
+    "Path of the Storm Herald",
+    "Path of the Zealot"
+  ],
+  "Bard": [
+    "College of Lore",
+    "College of Valor",
+    "College of Glamour",
+    "College of Whispers"
+  ],
+  "Cleric": [
+    "Life Domain",
+    "Light Domain",
+    "Trickery Domain",
+    "Knowledge Domain",
+    "Nature Domain",
+    "Tempest Domain",
+    "War Domain",
+    "Death Domain",
+    "Forge Domain",
+    "Grave Domain"
+  ],
+  "Druid": [
+    "Circle of the Moon",
+    "Circle of the Land",
+    "Circle of Dreams",
+    "Circle of the Shepherd"
+  ],
+  "Fighter": [
+    "Champion",
+    "Battle Master",
+    "Eldritch Knight",
+    "Arcane Archer",
+    "Cavalier",
+    "Samurai"
+  ],
+  "Monk": [
+    "Way of the Open Hand",
+    "Way of the Shadow",
+    "Way of the Four Elements",
+    "Way of the Drunken Master",
+    "Way of the Kensei",
+    "Way of the Sun Soul"
+  ],
+  "Paladin": [
+    "Oath of Devotion",
+    "Oath of the Ancients",
+    "Oath of Vengeance",
+    "Oathbreaker",
+    "Oath of Conquest",
+    "Oath of Redemption"
+  ],
+  "Ranger": [
+    "Hunter",
+    "Beast Master",
+    "Gloom Stalker",
+    "Horizon Walker",
+    "Monster Slayer"
+  ],
+  "Rogue": [
+    "Thief",
+    "Assassin",
+    "Arcane Trickster",
+    "Inquisitive",
+    "Mastermind",
+    "Scout",
+    "Swashbuckler"
+  ],
+  "Sorcerer": [
+    "Draconic Bloodline",
+    "Wild Magic",
+    "Divine Soul",
+    "Shadow Magic",
+    "Storm Sorcery"
+  ],
+  "Warlock": [
+    "The Archfey",
+    "The Fiend",
+    "The Great Old One",
+    "The Celestial",
+    "The Hexblade"
+  ],
+  "Wizard": [
+    "School of Abjuration",
+    "School of Conjuration",
+    "School of Divination",
+    "School of Enchantment",
+    "School of Evocation",
+    "School of Illusion",
+    "School of Necromancy",
+    "School of Transmutation",
+    "War Magic"
+  ]
+};
+function canCombatantAct(status) {
+  return status === "active";
+}
+function getAbilityModifier(score) {
+  return Math.floor((score - 10) / 2);
+}
+function resolveCheck(check2, characterStats, dndStats, rpgDiceRoller) {
+  let abilityScore;
+  let modifier = 0;
+  switch (check2.type.toLowerCase()) {
+    case "strength":
+    case "athletics":
+      abilityScore = dndStats.strength;
+      break;
+    case "dexterity":
+    case "acrobatics":
+    case "sleight of hand":
+    case "stealth":
+    case "attack":
+      abilityScore = dndStats.dexterity;
+      break;
+    case "constitution":
+      abilityScore = dndStats.constitution;
+      break;
+    case "intelligence":
+    case "arcana":
+    case "history":
+    case "investigation":
+    case "nature":
+    case "religion":
+      abilityScore = dndStats.intelligence;
+      break;
+    case "wisdom":
+    case "animal handling":
+    case "insight":
+    case "medicine":
+    case "perception":
+    case "survival":
+      abilityScore = dndStats.wisdom;
+      break;
+    case "charisma":
+    case "deception":
+    case "intimidation":
+    case "performance":
+    case "persuasion":
+      abilityScore = dndStats.charisma;
+      break;
+    case "initiative":
+      abilityScore = dndStats.dexterity;
+      break;
+    default:
+      if (check2.modifiers && check2.modifiers.length > 0) {
+        const primaryModifier = check2.modifiers[0].toLowerCase();
+        switch (primaryModifier) {
+          case "strength":
+            abilityScore = dndStats.strength;
+            break;
+          case "dexterity":
+            abilityScore = dndStats.dexterity;
+            break;
+          case "constitution":
+            abilityScore = dndStats.constitution;
+            break;
+          case "intelligence":
+            abilityScore = dndStats.intelligence;
+            break;
+          case "wisdom":
+            abilityScore = dndStats.wisdom;
+            break;
+          case "charisma":
+            abilityScore = dndStats.charisma;
+            break;
+        }
+      }
+      break;
+  }
+  if (abilityScore === void 0) {
+    return {
+      success: false,
+      roll: 0,
+      total: 0,
+      statement: `Check for ${check2.type} could not be resolved: No relevant ability score found.`
+    };
+  }
+  modifier = getAbilityModifier(abilityScore);
+  const roll = new rpgDiceRoller.DiceRoll("1d20").total;
+  const total = roll + modifier;
+  const success = total >= check2.difficultyClass;
+  let resultStatement;
+  if (success) {
+    resultStatement = `${characterStats.name} successfully passed the ${check2.type} check (DC ${check2.difficultyClass}) with a roll of ${roll} and a total of ${total}.`;
+  } else {
+    resultStatement = `${characterStats.name} failed the ${check2.type} check (DC ${check2.difficultyClass}) with a roll of ${roll} and a total of ${total}.`;
+  }
+  return {
+    success,
+    roll,
+    total,
+    statement: resultStatement
+  };
+}
+
+// src/pluginPrompt.ts
+function modifyProtagonistPromptForDnd(originalPrompt) {
+  return originalPrompt;
+}
+var coreAttributesContent = `
+In Dungeons & Dragons 5th Edition, ability scores range from 1 to 10, with 10-11 being the average for a commoner. While the game provides numerical modifiers, a descriptive interpretation helps bring characters to life. Here's a complete example for each main stat, from lowest to highest:
+
+## Strength
+
+**Strength** measures bodily power, athletic training, and the extent to which you can exert raw physical force.
+
+* **3 (Mod. -4):** **Morbidly Weak.** You struggle to lift your own limbs. Basic movements are a Herculean effort. You'd likely need help to stand and could be knocked over by a strong breeze.
+* **4-5 (Mod. -3):** **Feeble.** Visibly weak and frail. You might be able to pick up a small child, but anything more is a serious strain. Swinging even a light weapon might throw you off balance.
+* **6-7 (Mod. -2):** **Weak.** You struggle with anything heavier than a light load. Pushing an object your own weight is a significant challenge. You're easily winded by physical exertion.
+* **8-9 (Mod. -1):** **Below Average.** You can perform basic physical tasks, but you're not particularly strong. Lifting heavy objects for an extended time is difficult. You'd probably be one of the last picked for a team in a physically demanding task.
+* **10-11 (Mod. 0):** **Average.** You're capable of typical physical labor for a few hours. You can pull your own weight and lift moderately heavy objects for short periods. This is the common human average.
+* **12-13 (Mod. +1):** **Competent.** You're noticeably stronger than the average person. You can carry heavy objects, throw small objects with decent force, and perform physical labor for half a day without excessive fatigue.
+* **14-15 (Mod. +2):** **Strong.** You're visibly toned and capable. You can easily carry heavy objects with one arm and are not easily exhausted by physical exertion. You'd stand out in a crowd for your physique.
+* **16-17 (Mod. +3):** **Very Strong.** Muscular and powerful. You can break objects like wood with your bare hands and perform heavy physical labor for several hours. You'd be competitive in most strength challenges.
+* **18-19 (Mod. +4):** **Heavily Muscular/Near Peak Human.** Your strength borders on legendary for a mortal. You can bend steel bars, easily lift and throw grown individuals, and are a force of nature in a direct physical confrontation.
+* **20-21 (Mod. +5):** **Legendary.** Your strength is beyond what most consider possible. You can effortlessly tear through thick materials, lift small carts, and single-handedly overcome obstacles that would require a team of lesser individuals.
+* **22-23 (Mod. +6):** **Superhuman.** You are a physical marvel, easily confused for a minor giant or demigod. You can shatter boulders with a punch and rip trees from the ground.
+* **24-25 (Mod. +7):** **Mythic.** Your raw physical power is truly astounding, capable of feats of strength that defy mortal understanding. You might be able to throw siege weapons or punch through reinforced walls.
+* **26-27 (Mod. +8):** **Godlike (Lesser).** You possess strength that few mortals could ever hope to attain, hinting at divine lineage or immense magical power.
+* **28-29 (Mod. +9):** **Godlike (Greater).** Your strength approaches the might of true deities, capable of altering the landscape with your bare hands.
+* **30 (Mod. +10):** **Divine.** You possess the strength of a god. Your physical might is virtually boundless, allowing you to reshape reality through sheer force.
+
+## Dexterity
+
+**Dexterity** measures agility, reflexes, and balance.
+
+* **3 (Mod. -4):** **Barely Mobile.** You are severely uncoordinated, likely due to a physical disability or paralysis. Basic movements are painful and require extreme effort.
+* **4-5 (Mod. -3):** **Clumsy.** You frequently stumble, drop things, and struggle with tasks requiring manual precision. You move slowly and deliberately to avoid accidents.
+* **6-7 (Mod. -2):** **Awkward.** You're graceless and slow to react. You might trip over your own feet occasionally and have difficulty with fine motor skills like sewing or picking up small objects quickly.
+* **8-9 (Mod. -1):** **A Bit Ungainly.** You're somewhat slow and occasionally trip or bump into things. You're not particularly agile, but generally functional.
+* **10-11 (Mod. 0):** **Average.** You have typical balance and hand-eye coordination. You can catch a small tossed object, and perform basic precise tasks if needed, though not exceptionally well.
+* **12-13 (Mod. +1):** **Nimble.** You're well-poised and balanced. You move with a degree of grace and are capable of precise manipulations. You can generally handle an obstacle course with some effort.
+* **14-15 (Mod. +2):** **Adept.** You move elegantly and can manipulate objects with care and precision. You can often hit small targets and skillfully navigate challenging terrain.
+* **16-17 (Mod. +3):** **Graceful.** You have excellent control over your body, moving with the fluidity of a dancer or a trained acrobat. You're capable of extremely subtle and precise tasks, hitting moving targets with ease.
+* **18-19 (Mod. +4):** **Lithe/Peak Human Agility.** Your agility is bordering on the incredible. You can perform complex acrobatic maneuvers, dodge a barrage of projectiles, and pick even intricate locks with astonishing speed.
+* **20-21 (Mod. +5):** **Uncanny Agility.** You move like water, reacting to all situations with almost no effort. You can dodge a large number of thrown objects simultaneously and traverse difficult terrain as if it were flat ground.
+* **22-23 (Mod. +6):** **Superhuman Agility.** Your reflexes and control are beyond mortal comprehension. You can perceive and react to threats before others even register them, moving with impossible speed and precision.
+* **24-25 (Mod. +7):** **Mythic Agility.** You can disappear and reappear seemingly at will, or move so fast that you appear to be in multiple places at once. Your movements are a blur to the untrained eye.
+* **26-27 (Mod. +8):** **Godlike (Lesser).** You possess agility that rivals minor deities, capable of feats of impossible evasion and acrobatic brilliance.
+* **28-29 (Mod. +9):** **Godlike (Greater).** Your agility is on par with true deities. You can move with such speed and grace that you seem to transcend physical limitations.
+* **30 (Mod. +10):** **Divine.** You embody pure agility. Your movements are perfect, anticipating and reacting to any event with flawless execution.
+
+## Constitution
+
+**Constitution** measures health, stamina, and vital force.
+
+* **3 (Mod. -4):** **Frail/Mortally Ill.** Your body is barely functioning. You have a minimal immune system, are constantly exhausted, and likely suffer from chronic illness or multiple broken bones. A strong cough might put you in critical condition.
+* **4-5 (Mod. -3):** **Delicate.** You bruise very easily, are prone to sickness, and can be knocked unconscious by a light punch. You have very little stamina and tire quickly.
+* **6-7 (Mod. -2):** **Unhealthy.** You're unusually prone to disease and infection, easily winded, and struggle with prolonged physical activity. You often feel unwell.
+* **8-9 (Mod. -1):** **Fragile.** You're easily winded and can't endure a full day of hard labor without needing significant rest. You might occasionally catch mild illnesses.
+* **10-11 (Mod. 0):** **Average.** You're in typical health. You might occasionally contract mild sicknesses, but you recover normally. You can handle a standard workday.
+* **12-13 (Mod. +1):** **Sturdy.** You're in good health and fairly fit. You can take a few hits before being knocked unconscious and can labor for extended periods without undue fatigue.
+* **14-15 (Mod. +2):** **Hardy.** You easily shrug off most illnesses and can endure significant physical punishment. You're capable of working twelve hours most days with little complaint.
+* **16-17 (Mod. +3):** **Tough.** Physically robust and resilient. You rarely get sick, can shrug off serious injuries, and can stay awake and active for days on end without significant rest.
+* **18-19 (Mod. +4):** **Iron Will/Peak Human Endurance.** Your body is a fortress. You are incredibly difficult to sicken, poison, or injure, and you can push through pain and exhaustion far beyond normal limits.
+* **20-21 (Mod. +5):** **Indomitable.** Your physical resilience is almost unnatural. You can survive wounds that would be instantly fatal to others, endure extreme environments, and resist nearly all forms of physical affliction.
+* **22-23 (Mod. +6):** **Superhuman Endurance.** Your body is an engine of pure resilience. You can regenerate from grievous wounds with startling speed and are virtually immune to most mundane threats to your health.
+* **24-25 (Mod. +7):** **Mythic Endurance.** You are a living testament to unyielding fortitude. You can withstand cataclysmic forces and continue fighting long after any normal creature would have perished.
+* **26-27 (Mod. +8):** **Godlike (Lesser).** Your very being defies physical limitations, hinting at an eternal nature or divine protection.
+* **28-29 (Mod. +9):** **Godlike (Greater).** Your endurance approaches the might of true deities, capable of altering the landscape with your bare hands.
+* **30 (Mod. +10):** **Divine.** You are the embodiment of vital force. You are immortal and unyielding, effectively immune to all but the most powerful cosmic forces.
+
+## Intelligence
+
+**Intelligence** measures mental acuity, accuracy of recall, and the ability to reason.
+
+* **3 (Mod. -4):** **Animalistic.** You are barely sentient, incapable of logic or reason. Your behavior is reduced to simple reactions to immediate stimuli, perhaps akin to a very simple-minded animal.
+* **4-5 (Mod. -3):** **Dim-witted.** You have extremely limited speech and knowledge, often resorting to charades to express simple thoughts. You struggle with basic concepts and forget details easily.
+* **6-7 (Mod. -2):** **Slow-witted.** You have trouble following trains of thought, often misuse or mispronounce words, and forget most unimportant things. Learning new concepts is a slow and frustrating process.
+* **8-9 (Mod. -1):** **Forgetful/Unimaginative.** You make more errors than usual when reasoning and might struggle to retain complex knowledge. You're not unintelligent, but you're not particularly quick or insightful.
+* **10-11 (Mod. 0):** **Average.** You know what you need to know to get by. You can reason effectively for most daily tasks and retain general knowledge. This is the common human average.
+* **12-13 (Mod. +1):** **Bright.** You know a bit more than is necessary and are fairly logical. You can grasp new concepts relatively quickly and are generally quick-witted in conversation.
+* **14-15 (Mod. +2):** **Intelligent.** You are fairly intelligent, able to understand new tasks quickly and perform complex mental calculations. You can often solve logic puzzles mentally with reasonable accuracy.
+* **16-17 (Mod. +3):** **Very Intelligent.** You possess a keen mind, capable of deep analysis and abstract thought. You might invent new processes or uses for knowledge and readily connect disparate ideas.
+* **18-19 (Mod. +4):** **Highly Intelligent/Genius.** You are highly knowledgeable and probably the smartest person many people know. You can make Holmesian leaps of logic and master complex subjects with remarkable speed.
+* **20-21 (Mod. +5):** **Exceptional Genius.** You are famous as a sage and a genius, capable of groundbreaking discoveries and solving problems that baffle others. Your mind works at an incredible pace.
+* **22-23 (Mod. +6):** **Superhuman Intellect.** Your mental faculties operate on a different plane. You can process information at an astonishing rate, hold multiple complex thoughts simultaneously, and instantly recall vast amounts of information.
+* **24-25 (Mod. +7):** **Mythic Intellect.** Your intellect borders on the cosmic. You might be able to understand complex magical theories at a glance, devise strategies with incredible foresight, or even comprehend impossible concepts.
+* **26-27 (Mod. +8):** **Godlike (Lesser).** Your mind approaches that of a minor deity, capable of understanding and manipulating fundamental forces of reality through sheer mental power.
+* **28-29 (Mod. +9):** **Godlike (Greater).** Your intellect is on par with true deities. You possess omniscience within a certain domain, capable of comprehending the universe's most profound mysteries.
+* **30 (Mod. +10):** **Divine.** You are the embodiment of pure intellect. Your knowledge is boundless, and your understanding encompasses all things.
+
+## Wisdom
+
+**Wisdom** measures perception, intuition, insight, and common sense.
+
+* **3 (Mod. -4):** **Oblivious/Barely Aware.** You are seemingly incapable of thought or barely aware of your surroundings. You might stare blankly or miss obvious threats.
+* **4-5 (Mod. -3):** **Unobservant.** You rarely notice important or prominent items, people, or occurrences. You seem incapable of forethought and are easily surprised or misled.
+* **6-7 (Mod. -2):** **Foolish.** You often fail to exert common sense, make rash decisions, and are prone to overlooking crucial details. You're easily tricked or caught off guard.
+* **8-9 (Mod. -1):** **Inattentive.** You might forget or opt not to consider all options before taking action. You're generally well-meaning but prone to errors in judgment and perception.
+* **10-11 (Mod. 0):** **Average.** You make reasoned decisions most of the time and have a decent awareness of your surroundings. You're generally sensible. This is the common human average.
+* **12-13 (Mod. +1):** **Perceptive.** You have a good eye for detail and are capable of reading people fairly well. You can often tell when a person is upset or lying.
+* **14-15 (Mod. +2):** **Insightful.** You read people and situations very well and often get strong hunches about a situation that doesn't feel right. You're rarely surprised and notice subtle clues others miss.
+* **16-17 (Mod. +3):** **Keen-witted.** You are keenly aware of your environment and changes within it, seldom missing a clue, insinuation, or lie. You possess excellent judgment and intuition.
+* **18-19 (Mod. +4):** **Profoundly Wise/Preternatural Awareness.** You are often sought out for your wisdom and are a natural leader in difficult situations. You seem to anticipate events before they happen and possess an almost preternatural awareness.
+* **20-21 (Mod. +5):** **Sage-like.** Your wisdom is legendary. You possess perfect awareness of surroundings, context, and implications, making it extremely hard to get anything past you. You are a fount of practical knowledge.
+* **22-23 (Mod. +6):** **Superhuman Perception.** Your senses are incredibly acute, and your intuition is infallible. You can perceive hidden truths and insights others can't even fathom.
+* **24-25 (Mod. +7):** **Mythic Awareness.** Your perception extends beyond the mundane, allowing you to sense magic, spirits, or even faint echoes of past events. You are rarely truly surprised.
+* **26-27 (Mod. +8):** **Godlike (Lesser).** Your wisdom rivals that of minor deities, granting you glimpses into fate or the true nature of reality.
+* **28-29 (Mod. +9):** **Godlike (Greater).** Your wisdom is on par with true deities. You understand the fundamental truths of existence and the intricate workings of the cosmos.
+* **30 (Mod. +10):** **Divine.** You embody pure wisdom. Your understanding is absolute, and your intuition is flawless, allowing you to perceive all things as they truly are.
+
+## Charisma
+
+**Charisma** measures your ability to interact effectively with others, reflecting confidence, eloquence, and force of personality.
+
+* **3 (Mod. -4):** **Repellent.** You are profoundly hateful, utterly tactless, and possess no empathy. People are instinctively repulsed by you or find you incredibly boring.
+* **4-5 (Mod. -3):** **Off-putting.** You are deeply disagreeable, whether through extreme incompetence, malice, or utter blandness. You have trouble even thinking of others as people and how to interact with them.
+* **6-7 (Mod. -2):** **Unlikable.** You are terribly reticent, uninteresting, or rude. You frequently make gaffes and have difficulty connecting with others.
+* **8-9 (Mod. -1):** **Awkward.** You're somewhat socially inept or dull. You might make people mildly uncomfortable or struggle to find the right words in conversation.
+* **10-11 (Mod. 0):** **Average.** You are capable of polite conversation and can generally navigate social situations without major issues. You're neither particularly charming nor particularly off-putting. This is the common human average.
+* **12-13 (Mod. +1):** **Personable.** You are mildly interesting and know what to say to the right people. You can make a good first impression and hold your own in a debate.
+* **14-15 (Mod. +2):** **Charming.** You are often popular or infamous, possessing assured social skills. You know what to say to most people and can confidently lead a conversation or argument.
+* **16-17 (Mod. +3):** **Compelling.** You are quickly likeable, respected, or feared by many. You are very eloquent, persuasive, and possess a strong force of personality that draws others to you (or makes them wary).
+* **18-19 (Mod. +4):** **Magnetic/Peak Human Presence.** Your presence lights up a room, and people are immediately drawn to you. Even your worst enemies can't help but respond to your words. You are a natural leader, orator, or performer.
+* **20-21 (Mod. +5):** **Inspirational.** You possess a truly captivating personality. You can inspire devotion, command legions, and sway the hearts and minds of entire crowds with your words and actions.
+* **22-23 (Mod. +6):** **Superhuman Presence.** Your force of personality is overwhelming. You can charm beings resistant to mundane influence, and your mere presence can instill awe or dread.
+* **24-25 (Mod. +7):** **Mythic Presence.** You radiate an aura of power and conviction that few can resist. Your words can bend the will of others, and your influence spans vast distances.
+* **26-27 (Mod. +8):** **Godlike (Lesser).** Your charisma rivals that of minor deities, granting you the ability to inspire cults, lead nations, or influence the very fabric of social order.
+* **28-29 (Mod. +9):** **Godlike (Greater).** Your charisma is on par with true deities. You can command loyalty from legions of followers and sway even the most powerful of beings with your presence.
+* **30 (Mod. +10):** **Divine.** You are the embodiment of pure charisma. Your presence is irresistible, your words are law, and your force of personality can shape the very beliefs and emotions of others.
+`;
+function getBackstory(stats, pc) {
+  return {
+    system: `You are a helpful dungeon master trained to generate character backstory using Dungeons & Dragons 5th Edition rules in simple sentences in style of famous DM Matt Mercer. 
+    Your task is to provide a descriptive interpretation of a character's attributes based on their numerical values in provided D&D 5e context.`,
+    user: `Given the following D&D 5e attribute scores:
+      Strength: ${stats.strength}
+      Dexterity: ${stats.dexterity}
+      Constitution: ${stats.constitution}
+      Intelligence: ${stats.intelligence}
+      Wisdom: ${stats.wisdom}
+      Charisma: ${stats.charisma}
+      Level: ${stats.dndLevel}
+      Class: ${stats.dndClass}
+      SubClass: ${stats.dndSubclass}
+      Gender: ${pc.protagonist.gender}
+      Race: ${pc.protagonist.race}
+
+    And the following descriptive guidance from D&D 5e rules:
+    ${coreAttributesContent}
+
+    Provide a concise, narrative guiding description of the character's core attributes, incorporating descriptive interpretations. 
+    Focus on how these attributes would manifest in the character's personality, physical presence, and abilities. 
+    Based on the pattern of the attributes add a couple of backstory to explain the outlier attributes tied to the gender and race during upbringing and the eventual growth based on their level to their class and subclass (if applicable). 
+    Provide a current physical description of the character based on their attributes and backstory.
+
+    DO NOT repeat the numerical values of the attributes in your description.
+    DO NOT include numerical modifiers or numbers in your description.
+    Your entire response must be no more than 420 words. Do not exceed this limit. If your answer would be longer, stop at exactly 420 words and do not continue. Do not mention the word count in your answer.`
+  };
+}
+var coreSkillsAndDifficultyCheckContent = `
+In Dungeons & Dragons 5th Edition, there are 18 skills, each tied to one of the six core ability scores (Strength, Dexterity, Constitution, Intelligence, Wisdom, Charisma).
+
+Here's the full list, grouped by their associated ability score:
+
+Strength (STR)
+Athletics: Covers difficult physical tasks like climbing, jumping, and swimming, or feats of strength like grappling.
+
+Dexterity (DEX)
+Acrobatics: Used for maintaining balance, tumbling, flips, or intricate maneuvers.
+Sleight of Hand: For acts of manual trickery, such as picking pockets, concealing objects, or performing illusions with your hands.
+Stealth: For hiding, moving silently, or avoiding detection.
+
+Intelligence (INT)
+Arcana: Measures your knowledge of spells, magic items, arcane symbols, magical traditions, and the planes of existence.
+History: Recalling lore about historical events, legendary figures, ancient kingdoms, and past conflicts.
+Investigation: Used when you're looking for clues, making deductions, and interpreting evidence (e.g., finding a hidden object, discerning the weak point of a structure).
+Nature: Measures your knowledge of terrain, plants, animals, weather, and natural cycles.
+Religion: Recalling lore about deities, rites, prayers, religious hierarchies, holy symbols, and the practices of cults.
+
+Wisdom (WIS)
+Animal Handling: For calming, influencing, or understanding animals.
+Insight: Used to determine the true intentions of a creature, such as detecting lies or predicting someone's next move.
+Medicine: For diagnosing illnesses, stabilizing dying creatures, and administering first aid.
+Perception: For detecting your surroundings, noticing hidden objects, hearing faint sounds, or spotting ambushes. This is often one of the most frequently rolled skills.
+Survival: For tracking, foraging for food and water, navigating wilderness, and identifying natural signs.
+
+Charisma (CHA)
+Deception: For convincingly hiding the truth, whether through lies, misleading actions, or disguises.
+Intimidation: Attempting to influence someone through overt threats, hostile actions, or displays of physical prowess.
+Performance: Used to entertain an audience through music, dance, acting, storytelling, or other forms of showmanship.
+Persuasion: For influencing someone or a group with tact, social graces, or good nature.
+
+In Dungeons & Dragons 5th Edition, DC stands for Difficulty Class. It's a target number that a player must meet or exceed with an ability check, saving throw, or attack roll to succeed at a task. The higher the DC, the harder the task.
+
+While there isn't a strictly defined list for every increment (like DC 1, DC 2, DC 3, etc.), the Dungeon Master's Guide (DMG) and Player's Handbook (PHB) provide guidelines for common DCs and what they represent. Here's a breakdown of the generally accepted DC tiers, their definitions, and examples:
+
+DC 0 (Automatic Success / Trivial)
+
+Definition: A task that is so simple it doesn't even require a roll. There's no real chance of failure unless an external factor interferes.
+Example: Opening an unlocked and unjammed door. Picking up a dropped coin. Taking a step forward.
+DC 1-4 (Very Easy / Trivial but Possible Failure)
+
+Definition: A task that almost anyone could succeed at with minimal effort, but a truly unlucky roll (a natural 1) might still lead to failure. Often used for basic actions where time isn't a factor.
+Example:
+DC 1: Remembering a very common historical fact.
+DC 3: Recognizing a common animal from a distance.
+DC 4: Keeping your balance on a wide, flat beam.
+
+DC 5 (Very Easy)
+Definition: A task that is very simple, and most characters with even a minimal bonus in the relevant ability can succeed without issue.
+Example:
+Recalling common knowledge about a local village.
+Climbing a knotted rope.
+Spotting a large, obvious trap.
+Following a very clear trail.
+
+DC 10 (Easy)
+Definition: A task that requires a bit of effort or focus but is generally achievable for someone with some training or natural aptitude. This is a very common default DC.
+Example:
+Persuading a guard to let you pass with a plausible story.
+Jumping across a 10-foot gap.
+Picking a simple lock.
+Disarming a basic, visible trap.
+Tracking a single creature through soft mud.
+Remembering details about a regional deity.
+
+DC 15 (Medium)
+Definition: A task that presents a noticeable challenge, requiring a character to be competent in the relevant skill or to get lucky. This is the typical DC for moderate challenges.
+Example:
+Convincing a reluctant merchant to give you a discount.
+Climbing a rough, crumbling wall.
+Picking a complex lock.
+Spotting a well-hidden tripwire in a dark hallway.
+Identifying a rare monster from its tracks.
+Recalling obscure lore about an ancient artifact.
+
+DC 20 (Hard)
+Definition: A task that is difficult and requires significant skill, specific training, or excellent luck. Only characters proficient in the relevant skill will consistently succeed.
+Example:
+Calming a panicked crowd during a riot.
+Leaping over a deep chasm.
+Picking a masterwork lock.
+Disarming a complex, magical trap.
+Tracking a ghost through a bustling city street.
+Identifying a rare magical disease.
+
+DC 25 (Very Hard)
+Definition: A task that is exceptionally challenging, often requiring highly specialized skill, extraordinary effort, or powerful magic. Even proficient characters will struggle.
+Example:
+Intimidating a powerful noble or king.
+Breaking free from adamantine manacles.
+Crafting a legendary magic item without proper tools.
+Deactivating a powerful arcane ward.
+Recalling the exact wording of a forgotten prophecy.
+
+DC 30 (Nearly Impossible / Legendary)
+Definition: A task that is incredibly difficult, bordering on the impossible without epic abilities, extreme preparation, or divine intervention. Success implies a truly heroic feat.
+Example:
+Persuading a high-ranking devil to betray its master.
+Single-handedly holding up a collapsing cavern roof.
+Picking a lock on a vault designed by a demigod.
+Disarming a trap that would devastate a small town.
+Reconstructing the true history of a long-lost civilization from fragments.
+
+Key Considerations for DMs:
+Context Matters: The same action can have different DCs depending on the circumstances. (e.g., swimming in calm water vs. swimming in a stormy sea).
+Player Creativity: Reward clever solutions. A good plan might lower the DC, or even negate the need for a roll entirely.
+Consequences of Failure: Failure should be interesting, not just a dead end. What happens if they fail the check?
+Proficiency and Expertise: Characters with proficiency in a skill add their proficiency bonus. Characters with Expertise double their proficiency bonus, making higher DCs more achievable for them.
+`;
+function getChecksPrompt(action, plotType) {
+  let initiativeGuidance = "";
+  if (plotType !== "combat") {
+    initiativeGuidance = `If the action or situation clearly indicates the start of a combat encounter (e.g., an attack, an ambush, a trap being sprung), include an "initiative" check with a difficultyClass of 0 (the actual initiative roll will be handled by the game engine). Do NOT include an "initiative" check if the plotType is already "combat", current plotType is ${plotType}.`;
+  }
+  return {
+    system: `You are a helpful DM using D&D 5th Edition rules trained to analyze a given action or situation and determine if a skill check is required, and if so what are the most appropriate D&D 5e skill checks or action required to resolve it. 
+    ${initiativeGuidance}
+    You must return an array of CheckDefinition objects in JSON format.
+
+    Each CheckDefinition object must have the following properties:
+    - 'type': A string representing the skill (e.g., "athletics", "stealth", "perception") or attribute (e.g., "strength", "dexterity", "intelligence", "wisdom", "charisma", "constitution") being checked, or "attack" for attack rolls, or "initiative" for combat initiation.
+    - 'difficultyClass': A number representing the target number to beat for a successful check, or the AC of the target if this is an attack roll "attack".
+    - 'modifiers': An optional array of strings representing the character attributes relevant to the check (e.g., ["strength", "dexterity"]).
+
+    Your output must be a JSON array of CheckDefinition objects, and nothing else. For example:
+    [
+      {
+        "type": "stealth",
+        "difficultyClass": 5,
+        "modifiers": ["dexterity"]
+      },
+      {
+        "type": "perception",
+        "difficultyClass": 10,
+        "modifiers": ["wisdom"]
+      },
+      {
+        "type": "attack",
+        "difficultyClass": 12, // This is the AC of the target
+        "modifiers": ["strength"] // or ["dexterity"] for finesse/ranged weapons
+      }
+
+    ]
+
+    You should consider the context of the action/situation and the typical challenges associated with it in a D&D 5e setting. 
+    If multiple checks are appropriate, list them all. 
+    Trivial tasks like accepting an offer, believing in someone, giving or receiving an item/goods are automatic success so all difficultyClass for these are set to 0,
+    Here are the D&D 5e core skills and guidelines for difficulty classes:
+    ${coreSkillsAndDifficultyCheckContent}`,
+    user: `Given the situation/action: "${action}", does it require a skill check?
+    if so which D&D 5e skill check(s) / saving throw is required? If multiple checks are appropriate, list them all.
+    if you can not determine what specific check is needed, return an empty array.
+    Trivial actions like accepting a task/quest or acknowledge someone's point of view is auto success so all difficultyClass for these are set to 0
+    Provide your answer as a JSON array of CheckDefinition objects.`
+  };
+}
+function getConsequenceGuidancePrompt(sceneNarration, actionText, checkResult) {
+  const allCheckResults = checkResult.length > 0 ? `Check Results:
+${checkResult.join("\n")}` : "No specific checks were needed for this action.";
+  return {
+    system: `You are a helpful DM using D&D 5th Edition rules trained to generate consequence statements in simple sentences of 10 words or less. 
+    Your ONLY task is to use the provided scene, action, and D&D 5e skill check results to generate the outcome of the "Action Taken".
+     - Consider how close the roll was to the Difficulty Class (DC). A natural 1 on the roll is a critical failure, and a natural 20 is a critical success.
+     - Based on your interpretation, provide simple and concise narrative guidance for the consequences of the action like:
+       - what information gained/missed, 
+       - item exchanged, 
+       - key item lost, 
+       - altering relationship, 
+       - leads to combat, 
+       - or disastrous outcome, etc... 
+    Your entire response must be no more than 10 words per guidance. Do not exceed this limit. If your answer would be longer, stop at exactly 10 words per guidance and do not continue. Do not mention the word count in your answer. 
+    They must be short, clear and concise of possible ideas based on the situation in one single sentence per check result if it is provided. For example:
+    ** If the check results is "Stealth check (DC 15): Roll 18 (Success)", you should say "You successfully sneak past the guards unnoticed."
+     
+
+
+******
+
+
+
+    If multiple checks are provided, give a separate guidance for each check result.
+    If no checks were needed, provide a single concise guidance based on the action and scene like "You agree to join so and so in their quest. so and so are now your ally."
+    If the action is trivial (DC 0), it is considered an automatic success, so provide guidance accordingly like "You easily accomplish the task without any issues."
+    Do NOT mention the check results, DC, or roll numbers in your guidance.
+    Do NOT suggest new actions or next steps, only focus on the consequences of the action taken.
+    Do NOT make up new information not implied by the scene or action.
+    Do NOT repeat information already present in the scene or action text.
+    Do NOT include dialogue or character speech in your guidance.`,
+    user: `If no action is described after Action taken then you MUST ONLY return a single space " "! If action is provided then provide guidance in simple and concise sentence, focused on the action's outcome, limited to the following:
+    Base on the following scene and action, ONLY provide the guidance describing on the action's outcome.
+    ***** Current scene:
+    ${sceneNarration}
+    *****
+
+    ***** Action taken:
+    ${actionText}
+    *****
+
+    ***** Check results (if any):
+    ${allCheckResults}
+    *****
+    
+
+
+******
+
+
+
+    Base on these you will only provide objective ANSWERS, in single concise guidance statement of less than 10 words per guidance.
+    - Is there any information gained/missed, what information?
+    - Is there any item exchanged, what item?
+    - Is there any key item lost, what item?
+    - Is there any relationship altered, who is affected and how?
+    - Is there any ally or enemy gained/lost, who?
+    - Does this lead to combat, chase, or negotiation?
+    - If this consequence ends in a disastrous outcome, what is it?
+     Your entire response must be no more than 10 words per guidance. Do not exceed this limit. If your answer would be longer, stop at exactly 10 words per guidance and do not continue. Do not mention the word count in your answer. 
+    They must be short, clear and concise of possible ideas based on the situation in one single sentence per check result if it is provided. 
+    
+
+
+******
+
+
+
+    For example:
+    If the check results is "Stealth check (DC 15): Roll 18 (Success)", you should say "You successfully sneak past the guards unnoticed."
+    
+
+
+******
+
+
+
+    If multiple checks are provided, give a separate guidance for each check result.
+    If no checks were needed, provide a single concise guidance based on the action and scene like "You agree to join so and so in their quest. so and so are now your ally."
+    If the action is trivial (DC 0), it is considered an automatic success, so provide guidance accordingly like "You easily accomplish the task without any issues."
+    Do NOT mention the check results, DC, or roll numbers in your guidance.
+    Do NOT suggest new actions or next steps, only focus on the consequences of the action taken.
+    Do NOT make up new information not implied by the scene or action.
+    Do NOT repeat information already present in the scene or action text.
+    Do NOT include dialogue or character speech in your guidance.`
+  };
+}
+var dndRulesDMStyle = "Ensure your narration aligns with D&D 5e fantasy themes, character abilities, and typical role-playing scenarios that the famous DM Matt Mercer would narrate.";
+var dndRulesCombat = "Narrate this as a dynamic combat scene, focusing on action and character reactions, adhering to D&D 5e combat rules.";
+function getDndNarrationGuidance(eventType) {
+  let guidance = "";
+  if (eventType === "combat") {
+    guidance += dndRulesCombat;
+  } else {
+    guidance += dndRulesDMStyle;
+  }
+  return guidance;
+}
+function getLocationChangePrompt(previousLocationName, newLocationName, newLocationDescription, presentCharactersInfo, newLocationTrigger) {
+  return {
+    system: "You are an story plot line author. Your goal is to maintain story continuity focusing on the protagonist's journey, character growth, development and goals.",
+    user: `The protagonist has physically traveled to ${newLocationName}. ${newLocationDescription} FROM ${previousLocationName}. 
+ 
+        The transition was triggered by: "${newLocationTrigger}". If trigger is empty then this is a start of a new story. 
+         
+        There are ${presentCharactersInfo} in this new location but don't mention them if they haven't met protagonist yet from previous scene. 
+        They may not all be in the same visible vicinity of the protagonist, 
+        They may not all be friendly or allied to the protagonist, 
+        They may not all be aware of the protagonist's presence.
+        Use this information as context to Narrate this transition in 2 Sentences below: 
+ 
+        In a simple single sentence describe the reason for the new scene in the continuity of the story (e.g., continuing a quest, seeking something, fleeing) in 100 words or less. 
+ 
+        In a simple single sentences describe the new location's immediate relevance to the protagonist's ongoing plot or implied goal in 100 words or less. 
+ 
+         Ensure your narration aligns with D&D 5e fantasy themes, character abilities, and suitable for role-playing scenarios and no more than 200 words in total.`
+  };
+}
+function getCombatantsPrompt(sceneNarration, protagonistName) {
+  return {
+    system: "You are a helpful DM using D&D 5th Edition rules in the narrative style of famous DM Matt Mercer.",
+    user: `Based on the following scene narration, identify the combat participants: 
+    
+    Scene: ${sceneNarration} 
+    Protagonist: ${protagonistName} 
+    
+    Provide a JSON object with the following structure:
+    { "friendlyCharacters": [
+    { "name": "Protagonist's Name" },
+    { "name": "Ally 1 Name" }
+    ],
+      "namedEnemies": [
+    { "name": "Enemy 1 Name" },
+    { "name": "Enemy 2 Name" }
+    ],
+      "unnamedEnemiesCount": 0,
+      "encounterDescription": "A brief description of the combat encounter."
+    }`
+  };
+}
+function getCombatRoundActionsPrompt(battle, playerAction) {
+  const combatantStates = battle.combatants.map((c) => `  - ${c.id} (Status: ${c.status}, HP: ${c.currentHp}/${c.maxHp})`).join("\n");
+  const jsonSchema = {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Combat Round Actions",
+    "description": "An array of actions to be performed by combatants in a single round.",
+    "type": "array",
+    "items": {
+      "$ref": "#/definitions/CombatAction"
+    },
+    "definitions": {
+      "CombatAction": {
+        "type": "object",
+        "title": "Combat Action",
+        "description": "A single action taken by a combatant.",
+        "properties": {
+          "actorId": {
+            "type": "string",
+            "description": "The unique name of the combatant performing the action."
+          },
+          "actionType": {
+            "type": "string",
+            "description": "The type of action being performed.",
+            "enum": ["Attack", "CastSpell", "Dash", "Dodge", "Disengage", "Help", "Hide", "Ready", "Search", "UseObject"]
+          },
+          "targetId": {
+            "type": "string",
+            "description": "The unique name of the target combatant. Optional."
+          },
+          "description": {
+            "type": "string",
+            "description": "A brief narrative description of the action."
+          }
+        },
+        "required": ["actorId", "actionType", "description"]
+      }
+    }
+  };
+  return {
+    system: `You are a helpful DM using D&D 5th Edition rules. Your task is to determine the actions for all non-player combatants for the current round of combat based on the provided battle state. You must respond with a valid JSON object that conforms to the provided schema.`,
+    user: `We are in round ${battle.roundNumber} of combat. The player has declared the following action: "${playerAction}".
+    The current state of all combatants is:
+    ${combatantStates}
+
+    The previous combat log is:
+    ${battle.combatLog.join("\n")}
+
+    Based on this information, decide the action for every *other* active combatant. An active combatant has the status "active".
+    Your response MUST be a JSON array of "CombatAction" objects, conforming to this schema:
+    ${JSON.stringify(jsonSchema, null, 2)}`
+  };
+}
+function getCombatRoundNarrationPrompt(combatLog) {
+  return {
+    system: `You are a ruthless DM using D&D 5th Edition rules, known for weaving exciting and descriptive combat narratives in the style of Matt Mercer. 
+    Your task is to take a structured combat log and transform it into a single, fluid, and engaging paragraph that tells the story of the round.`,
+    user: `Based on the following combat log, create a comprehensive and engaging narrative summary of the entire round.
+
+    Combat Log:
+    ${combatLog.join("\n")}
+
+    Combine these events into a single, cohesive paragraph. Describe the actions, reactions, and outcomes in a way that brings the scene to life. 
+    Focus on vivid descriptions and the flow of battle. Do not break it into separate lines or bullet points.
+    Your entire response must be a single paragraph.`
+  };
+}
 
 // src/main.tsx
 var React;
@@ -15147,10 +11477,11 @@ var DndStatsPlugin = class {
     }
     const PCStats = this.settings;
     const rpgDiceRoller = this.appLibs.rpgDiceRoller;
-    let resultStatement = resolveCheck(check2, characterData, PCStats, rpgDiceRoller);
+    const checkResult = resolveCheck(check2, characterData, PCStats, rpgDiceRoller);
+    const resultStatement = checkResult.statement;
     let consequenceLog = [];
     if (check2.type === "initiative") {
-      this.handleConsequence("initiative_triggered", [resultStatement], action);
+      await this.handleConsequence("initiative_triggered", context, [resultStatement], action);
       consequenceLog.push("Combat initiated! Initiative order determined.");
     }
     return { resultStatement, consequenceLog };
@@ -15168,6 +11499,14 @@ var DndStatsPlugin = class {
     if (!this.appBackend || !this.settings) {
       console.error("Context or settings not available for getNarrativeGuidance.");
       return [];
+    }
+    if (this.settings.plotType === "combat" && action) {
+      const combatNarration2 = await this.executeCombatRound(action);
+      const dndStyleGuidance2 = getDndNarrationGuidance(eventType);
+      const consolidatedGuidance2 = `${dndStyleGuidance2}
+
+${combatNarration2}`;
+      return [consolidatedGuidance2];
     }
     const PCStats = this.settings;
     const checkResultStatements = (checkResolutionResults == null ? void 0 : checkResolutionResults.map((cr) => cr.resultStatement)) || [];
@@ -15236,6 +11575,173 @@ ${combatNarration}`;
     return [consolidatedGuidance];
   }
   /**
+   * @method executeCombatRound
+   * @description Executes a single round of combat. This method orchestrates the entire combat flow for a round:
+   * 1. Clears the combat log for the new round.
+   * 2. Constructs a prompt for the LLM to determine NPC actions based on the player's action and current battle state.
+   * 3. Calls the LLM to get NPC actions, with a fallback to basic attacks if the LLM call fails.
+   * 4. Combines player and NPC actions, then sorts them by initiative order.
+   * 5. Iterates through the sorted actions, resolving each one using `resolveCombatAction`.
+   * 6. Checks for combat end conditions (all enemies or all friendlies defeated).
+   * 7. If combat ends, it updates the plot type and clears the encounter data. Otherwise, it increments the round number.
+   * 8. Finally, it generates a comprehensive narrative summary of the round's events using the combat log and returns it.
+   * @param {string} playerAction - The action taken by the player character.
+   * @returns {Promise<string>} A promise that resolves to a string containing the combat round's narration.
+   */
+  async executeCombatRound(playerAction) {
+    var _a;
+    if (!this.settings || !this.appBackend || !this.settings.encounter) {
+      console.error("Settings, backend, or encounter not available for executing combat round.");
+      return "";
+    }
+    const battle = this.settings.encounter;
+    battle.combatLog = [];
+    const prompt = getCombatRoundActionsPrompt(battle, playerAction);
+    let npcActions = [];
+    try {
+      const TempCombatRoundActionsResponseSchema = object({
+        actions: CombatRoundActionsSchema
+      });
+      const combatRoundResponse = await this.appBackend.getObject(prompt, TempCombatRoundActionsResponseSchema);
+      npcActions = combatRoundResponse.actions;
+      console.log("NPC Actions:", npcActions);
+    } catch (error39) {
+      console.error("Error getting NPC actions from LLM, using fallback:", error39);
+      const activeNpcs = battle.combatants.filter((c) => !c.isFriendly && canCombatantAct(c.status));
+      const potentialTargets = battle.combatants.filter((c) => c.isFriendly && canCombatantAct(c.status));
+      if (potentialTargets.length > 0) {
+        for (const npc of activeNpcs) {
+          const target = potentialTargets[Math.floor(Math.random() * potentialTargets.length)];
+          const fallbackAction = {
+            actorId: npc.id,
+            actionType: "Attack",
+            targetId: target.id,
+            description: `${npc.id} attacks ${target.id}.`
+          };
+          npcActions.push(fallbackAction);
+        }
+      }
+    }
+    const playerCombatant = battle.combatants.find((c) => c.characterIndex === -1);
+    const allActions = [];
+    if (playerCombatant && canCombatantAct(playerCombatant.status)) {
+      const playerActionObject = {
+        actorId: playerCombatant.id,
+        actionType: "Attack",
+        // Assuming player always attacks for now.
+        targetId: (_a = battle.combatants.find((c) => !c.isFriendly && canCombatantAct(c.status))) == null ? void 0 : _a.id,
+        // Target the first available enemy.
+        description: playerAction
+      };
+      allActions.push(__spreadProps(__spreadValues({}, playerActionObject), { initiative: playerCombatant.initiativeRoll }));
+    }
+    npcActions.forEach((action) => {
+      const combatant = battle.combatants.find((c) => c.id === action.actorId);
+      if (combatant) {
+        allActions.push(__spreadProps(__spreadValues({}, action), { initiative: combatant.initiativeRoll }));
+      }
+    });
+    allActions.sort((a, b) => b.initiative - a.initiative);
+    for (const action of allActions) {
+      const combatant = battle.combatants.find((c) => c.id === action.actorId);
+      if (combatant && canCombatantAct(combatant.status)) {
+        this.resolveCombatAction(action);
+      }
+    }
+    const remainingEnemies = battle.combatants.filter((c) => !c.isFriendly && canCombatantAct(c.status));
+    const remainingFriendlies = battle.combatants.filter((c) => c.isFriendly && canCombatantAct(c.status));
+    if (remainingEnemies.length === 0) {
+      battle.combatLog.push("All enemies have been defeated! Combat is over.");
+      this.settings.plotType = "general";
+      this.settings.encounter = void 0;
+    } else if (remainingFriendlies.length === 0) {
+      battle.combatLog.push("All friendly characters have been defeated! Combat is over.");
+      this.settings.plotType = "general";
+      this.settings.encounter = void 0;
+    } else {
+      battle.roundNumber++;
+    }
+    const narrationPrompt = getCombatRoundNarrationPrompt(battle.combatLog);
+    const roundNarration = await this.appBackend.getNarration(narrationPrompt);
+    return roundNarration;
+  }
+  /**
+   * @method resolveCombatAction
+   * @description Resolves a single combat action, updating the battle state and combat log accordingly.
+   * This method handles different action types (e.g., Attack, CastSpell) and their effects on combatants.
+   * For "Attack" actions, it performs an attack roll, calculates damage on a success, updates the target's HP,
+   * and checks if the target is defeated. For other actions, it logs a descriptive message.
+   * @param {CombatAction} action - The combat action to resolve.
+   */
+  resolveCombatAction(action) {
+    if (!this.settings || !this.settings.encounter || !this.appLibs || !this.appStateManager) {
+      console.error("Cannot resolve combat action: missing settings, encounter, appLibs, or appStateManager.");
+      return;
+    }
+    const battle = this.settings.encounter;
+    const attacker = battle.combatants.find((c) => c.id === action.actorId);
+    const target = battle.combatants.find((c) => c.id === action.targetId);
+    if (!attacker) {
+      battle.combatLog.push(`Attacker ${action.actorId} not found.`);
+      return;
+    }
+    switch (action.actionType) {
+      case "Attack":
+        if (!target) {
+          battle.combatLog.push(`${attacker.id} attacks, but the target is invalid.`);
+          return;
+        }
+        const globalState = this.appStateManager.getGlobalState();
+        const attackerCharacter = attacker.characterIndex === -1 ? globalState.protagonist : globalState.characters[attacker.characterIndex];
+        if (!attackerCharacter) {
+          battle.combatLog.push(`Character data for ${attacker.id} not found.`);
+          return;
+        }
+        const attackCheck = { type: "attack", difficultyClass: 10 };
+        const attackResult = resolveCheck(attackCheck, attackerCharacter, this.settings, this.appLibs.rpgDiceRoller);
+        battle.combatLog.push(attackResult.statement);
+        if (attackResult.success) {
+          const damageRoll = new this.appLibs.rpgDiceRoller.DiceRoll("1d6");
+          const damage = damageRoll.total;
+          target.currentHp -= damage;
+          battle.combatLog.push(`${attacker.id} deals ${damage} damage to ${target.id}. ${target.id} has ${target.currentHp} HP remaining.`);
+          if (target.currentHp <= 0) {
+            target.status = "dead";
+            battle.combatLog.push(`${target.id} has been defeated.`);
+            if (target.characterIndex !== -1 && globalState.characters[target.characterIndex]) {
+              this.appStateManager.setGlobalState(async (state) => {
+                const character = state.characters[target.characterIndex];
+                if (character) {
+                  character.biography += "\n(DEFEATED IN COMBAT)";
+                }
+              });
+            }
+          }
+        }
+        break;
+      case "CastSpell":
+      case "Help":
+      case "UseObject":
+        const targetLogWithTarget = action.targetId ? ` on ${action.targetId}` : "";
+        battle.combatLog.push(`${action.actorId} uses the ${action.actionType} action${targetLogWithTarget}.`);
+        break;
+      case "Dash":
+      case "Dodge":
+      case "Disengage":
+      case "Hide":
+      case "Ready":
+      case "Search":
+      case "Move":
+        battle.combatLog.push(`${action.actorId} uses the ${action.actionType} action.`);
+        break;
+      case "Other":
+      default:
+        const targetLogDefault = action.targetId ? ` on ${action.targetId}` : "";
+        battle.combatLog.push(`${action.actorId} performs an action: ${action.description}${targetLogDefault}.`);
+        break;
+    }
+  }
+  /**
    * @method handleConsequence
    * @description Applies state changes based on the outcome of a check or event.
    * This method is called internally by `resolveCheck` and is solely responsible for modifying the plugin's internal state.
@@ -15244,82 +11750,50 @@ ${combatNarration}`;
    * @param {string} [action] - Optional: The action that triggered the consequence.
    * @returns {void}
    */
-  async handleConsequence(eventType, checkResultStatements, action) {
-    var _a;
-    if (!this.settings || !this.appLibs) {
-      console.error("ERROR: Plugin: Settings not available for handleConsequence.");
+  async handleConsequence(eventType, context, checkResultStatements, action) {
+    if (!this.settings || !this.appLibs || !this.appBackend) {
+      console.error("ERROR: Plugin: Settings, AppLibs, or AppBackend not available for handleConsequence.");
       return;
     }
     const PCStats = this.settings;
     const rpgDiceRoller = this.appLibs.rpgDiceRoller;
-    if (eventType === "damage_dealt" && checkResultStatements && PCStats.plotType === "combat" && PCStats.encounter) {
-      const damageRegex = /dealt (\d+) (\w+) damage to (\w+)/;
-      const match = checkResultStatements[0].match(damageRegex);
-      if (match) {
-        const damageAmount = parseInt(match[1]);
-        const targetName = match[3];
-        const targetCombatant = PCStats.encounter.combatants.find(
-          (c) => {
-            var _a2;
-            const globalState = (_a2 = this.appStateManager) == null ? void 0 : _a2.getGlobalState();
-            if (!globalState) return false;
-            if (c.characterIndex === -1) {
-              return globalState.protagonist.name === targetName;
-            } else {
-              return globalState.characters[c.characterIndex].name === targetName;
-            }
-          }
-        );
-        if (targetCombatant) {
-          targetCombatant.currentHp -= damageAmount;
-          PCStats.encounter.combatLog = [...PCStats.encounter.combatLog, `${targetName} took ${damageAmount} damage.`];
-          if (targetCombatant.currentHp <= 0) {
-            targetCombatant.status = "dead";
-            PCStats.encounter.combatLog = [...PCStats.encounter.combatLog, `${targetName} is dead.`];
-            const remainingEnemies = PCStats.encounter.combatants.filter(
-              (c) => c.status === "active" && c.isFriendly === false
-            );
-            if (remainingEnemies.length === 0) {
-              PCStats.encounter.combatLog = [...PCStats.encounter.combatLog, `Combat ends.`];
-              PCStats.plotType = "general";
-              PCStats.encounter = void 0;
-            }
-          }
-        }
-      }
-    } else if (eventType === "initiative_triggered" && PCStats.plotType !== "combat") {
+    if (eventType === "initiative_triggered" && PCStats.plotType !== "combat") {
       PCStats.plotType = "combat";
       const CombatantsLLMSchema = object({
         friendlyCharacters: array(object({
-          name: string2()
-          // Add other relevant character properties if needed from LLM
+          name: string2(),
+          currentHp: number2().int().min(1),
+          maxHp: number2().int().min(1)
         })),
         namedEnemies: array(object({
-          name: string2()
-          // Add other relevant character properties if needed from LLM
+          name: string2(),
+          currentHp: number2().int().min(1),
+          maxHp: number2().int().min(1)
         })),
         unnamedEnemiesCount: number2().int().min(0),
-        // Potentially add a description of the encounter for context
+        unnamedEnemiesDefaultHp: number2().int().min(1).optional(),
+        // New: Default HP for unnamed enemies
         encounterDescription: string2().optional()
       });
       let sceneNarration = "";
-      const globalState = (_a = this.appStateManager) == null ? void 0 : _a.getGlobalState();
-      if (globalState) {
-        for (let i = globalState.events.length - 1; i >= 0; i--) {
-          const event = globalState.events[i];
+      if (context) {
+        for (let i = context.events.length - 1; i >= 0; i--) {
+          const event = context.events[i];
           if ((event == null ? void 0 : event.type) === "narration") {
             sceneNarration = event.text;
             break;
           }
         }
       }
-      const combatantsPrompt = getCombatantsPrompt(sceneNarration, (globalState == null ? void 0 : globalState.protagonist.name) || "");
+      const combatantsPrompt = getCombatantsPrompt(sceneNarration, context.protagonist.name || "");
       const combatantsLLMResponse = await this.appBackend.getObject(combatantsPrompt, CombatantsLLMSchema);
       const allCombatants = [];
-      if (globalState == null ? void 0 : globalState.protagonist) {
+      if (context.protagonist) {
         const dexterityModifier = Math.floor((PCStats.dexterity - 10) / 2);
         const initiativeRoll = new rpgDiceRoller.DiceRoll(`1d20+${dexterityModifier}`);
         allCombatants.push({
+          id: context.protagonist.name,
+          // Add id for protagonist
           characterIndex: -1,
           // Special index for protagonist
           currentHp: PCStats.hp,
@@ -15330,39 +11804,41 @@ ${combatNarration}`;
         });
       }
       for (const char of combatantsLLMResponse.friendlyCharacters) {
-        if ((globalState == null ? void 0 : globalState.protagonist) && char.name === globalState.protagonist.name) {
+        if (context.protagonist && char.name === context.protagonist.name) {
           continue;
         }
-        let charIndex = globalState == null ? void 0 : globalState.characters.findIndex((c) => c.name === char.name);
+        let charIndex = context.characters.findIndex((c) => c.name === char.name);
         if (charIndex === -1 || charIndex === void 0) {
-          charIndex = (globalState == null ? void 0 : globalState.characters.length) || 0;
-          globalState == null ? void 0 : globalState.characters.push(__spreadProps(__spreadValues({}, char), { gender: "male", race: "human", biography: "", locationIndex: 0 }));
+          charIndex = context.characters.length || 0;
+          context.characters.push(__spreadProps(__spreadValues({}, char), { gender: "male", race: "human", biography: "", locationIndex: 0 }));
         }
         const initiativeRoll = new rpgDiceRoller.DiceRoll(`1d20`);
         allCombatants.push({
+          id: char.name,
           characterIndex: charIndex,
-          currentHp: 10,
-          // Placeholder HP, to-do: should be based on hit dice or stats if available
-          maxHp: 10,
-          // Placeholder HP, to-do: should be based on hit dice or stats if available
+          currentHp: char.currentHp,
+          // Use HP from LLM
+          maxHp: char.maxHp,
+          // Use HP from LLM
           status: "active",
           initiativeRoll: initiativeRoll.total,
           isFriendly: true
         });
       }
       for (const char of combatantsLLMResponse.namedEnemies) {
-        let charIndex = globalState == null ? void 0 : globalState.characters.findIndex((c) => c.name === char.name);
+        let charIndex = context.characters.findIndex((c) => c.name === char.name);
         if (charIndex === -1 || charIndex === void 0) {
-          charIndex = (globalState == null ? void 0 : globalState.characters.length) || 0;
-          globalState == null ? void 0 : globalState.characters.push(__spreadProps(__spreadValues({}, char), { gender: "male", race: "human", biography: "", locationIndex: 0 }));
+          charIndex = context.characters.length || 0;
+          context.characters.push(__spreadProps(__spreadValues({}, char), { gender: "male", race: "human", biography: "", locationIndex: 0 }));
         }
         const initiativeRoll = new rpgDiceRoller.DiceRoll(`1d20`);
         allCombatants.push({
+          id: char.name,
           characterIndex: charIndex,
-          currentHp: 10,
-          // Placeholder HP, to-do: should be based on hit dice or stats if available
-          maxHp: 10,
-          // Placeholder HP, to-do: should be based on hit dice or stats if available
+          currentHp: char.currentHp,
+          // Use HP from LLM
+          maxHp: char.maxHp,
+          // Use HP from LLM
           status: "active",
           initiativeRoll: initiativeRoll.total,
           isFriendly: false
@@ -15381,10 +11857,11 @@ ${combatNarration}`;
           locationIndex: 0
           // Placeholder
         };
-        let charIndex = (globalState == null ? void 0 : globalState.characters.length) || 0;
-        globalState == null ? void 0 : globalState.characters.push(enemyChar);
+        let charIndex = context.characters.length || 0;
+        context.characters.push(enemyChar);
         const initiativeRoll = new rpgDiceRoller.DiceRoll(`1d20`);
         allCombatants.push({
+          id: enemyName,
           characterIndex: charIndex,
           currentHp: 20,
           // Placeholder HP

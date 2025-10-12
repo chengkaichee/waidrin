@@ -61,6 +61,6 @@ jest.config.js
 playwright.config.ts
 setupTests.ts
 /tests/
-*.test.tsx
+*.test.ts*
 playwright-report/
 test-results/

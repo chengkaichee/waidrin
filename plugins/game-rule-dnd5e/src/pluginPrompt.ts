@@ -1,5 +1,5 @@
 import type { Prompt } from "@/lib/prompts";
-import type { DnDStats } from "./pluginData";
+import type { Battle, DnDStats } from "./pluginData";
 import type { StoredState } from "@/lib/state";
 
 /**
@@ -299,17 +299,17 @@ Proficiency and Expertise: Characters with proficiency in a skill add their prof
 export function getChecksPrompt(action: string, plotType: string): Prompt {
   let initiativeGuidance = "";
   if (plotType !== "combat") {
-    initiativeGuidance = `If the action or situation clearly indicates the start of a combat encounter (e.g., an attack, an ambush, a trap being sprung), include an \"initiative\" check with a difficultyClass of 0 (the actual initiative roll will be handled by the game engine). Do NOT include an \"initiative\" check if the plotType is already \"combat\", current plotType is ${plotType}.`;
+    initiativeGuidance = `If the action or situation clearly indicates the start of a combat encounter (e.g., an attack, an ambush, a trap being sprung), include an "initiative" check with a difficultyClass of 0 (the actual initiative roll will be handled by the game engine). Do NOT include an "initiative" check if the plotType is already "combat", current plotType is ${plotType}.`;
   }
 
   return {
-    system: `You are a helpful Dungeon Master in Dungeons & Dragons 5th Edition with the play style of famous DM Matt Mercer. Your task is to analyze a given action or situation and determine if a skill check is required, and if so what are the most appropriate D&D 5e skill checks required to resolve it. 
+    system: `You are a helpful DM using D&D 5th Edition rules trained to analyze a given action or situation and determine if a skill check is required, and if so what are the most appropriate D&D 5e skill checks or action required to resolve it. 
     ${initiativeGuidance}
     You must return an array of CheckDefinition objects in JSON format.
 
     Each CheckDefinition object must have the following properties:
-    - 'type': A string representing the skill (e.g., \"athletics\", \"stealth\", \"perception\") or attribute (e.g., \"strength\", \"dexterity\", \"intelligence\", \"wisdom\", \"charisma\", \"constitution\") being checked, or \"to-hit\" for attack rolls, or \"initiative\" for combat initiation.
-    - 'difficultyClass': A number representing the target number to beat for a successful check, or the AC of the target if this is an attack roll \"to-hit\".
+    - 'type': A string representing the skill (e.g., \"athletics\", \"stealth\", \"perception\") or attribute (e.g., \"strength\", \"dexterity\", \"intelligence\", \"wisdom\", \"charisma\", \"constitution\") being checked, or \"attack\" for attack rolls, or \"initiative\" for combat initiation.
+    - 'difficultyClass': A number representing the target number to beat for a successful check, or the AC of the target if this is an attack roll \"attack\".
     - 'modifiers': An optional array of strings representing the character attributes relevant to the check (e.g., [\"strength\", \"dexterity\"]).
 
     Your output must be a JSON array of CheckDefinition objects, and nothing else. For example:
@@ -323,6 +323,11 @@ export function getChecksPrompt(action: string, plotType: string): Prompt {
         "type": "perception",
         "difficultyClass": 10,
         "modifiers": ["wisdom"]
+      },
+      {
+        "type": "attack",
+        "difficultyClass": 12, // This is the AC of the target
+        "modifiers": ["strength"] // or ["dexterity"] for finesse/ranged weapons
       }
 
     ]
@@ -332,7 +337,7 @@ export function getChecksPrompt(action: string, plotType: string): Prompt {
     Trivial tasks like accepting an offer, believing in someone, giving or receiving an item/goods are automatic success so all difficultyClass for these are set to 0,
     Here are the D&D 5e core skills and guidelines for difficulty classes:
     ${coreSkillsAndDifficultyCheckContent}`,
-    user: ` Given the situation/action: "${action}", does it require a skill check?
+    user: `Given the situation/action: "${action}", does it require a skill check?
     if so which D&D 5e skill check(s) / saving throw is required? If multiple checks are appropriate, list them all.
     if you can not determine what specific check is needed, return an empty array.
     Trivial actions like accepting a task/quest or acknowledge someone's point of view is auto success so all difficultyClass for these are set to 0
@@ -354,7 +359,7 @@ export function getConsequenceGuidancePrompt(sceneNarration: string, actionText:
     : "No specific checks were needed for this action.";
 
   return {
-    system: `You are a helpful dungeon master trained to generate consequence statements using Dungeons & Dragons 5th Edition rules in simple sentences of 10 words or less. 
+    system: `You are a helpful DM using D&D 5th Edition rules trained to generate consequence statements in simple sentences of 10 words or less. 
     Your ONLY task is to use the provided scene, action, and D&D 5e skill check results to generate the outcome of the "Action Taken".
      - Consider how close the roll was to the Difficulty Class (DC). A natural 1 on the roll is a critical failure, and a natural 20 is a critical success.
      - Based on your interpretation, provide simple and concise narrative guidance for the consequences of the action like:
@@ -374,10 +379,11 @@ export function getConsequenceGuidancePrompt(sceneNarration: string, actionText:
     Do NOT mention the check results, DC, or roll numbers in your guidance.
     Do NOT suggest new actions or next steps, only focus on the consequences of the action taken.
     Do NOT make up new information not implied by the scene or action.
-    Do NOT repeat information already present in the scene or action text.`,
+    Do NOT repeat information already present in the scene or action text.
+    Do NOT include dialogue or character speech in your guidance.`,
     
     user: `If no action is described after Action taken then you MUST ONLY return a single space " "! If action is provided then provide guidance in simple and concise sentence, focused on the action's outcome, limited to the following:
-    Base on the following scene and action, ONLY provide the guidance based on the action's outcome.
+    Base on the following scene and action, ONLY provide the guidance describing on the action's outcome.
     ***** Current scene:
     ${sceneNarration}
     *****
@@ -397,7 +403,7 @@ export function getConsequenceGuidancePrompt(sceneNarration: string, actionText:
     - Is there any relationship altered, who is affected and how?
     - Is there any ally or enemy gained/lost, who?
     - Does this lead to combat, chase, or negotiation?
-    - Is this consequence ends in a disastrous outcome, what is it?
+    - If this consequence ends in a disastrous outcome, what is it?
      Your entire response must be no more than 10 words per guidance. Do not exceed this limit. If your answer would be longer, stop at exactly 10 words per guidance and do not continue. Do not mention the word count in your answer. 
     They must be short, clear and concise of possible ideas based on the situation in one single sentence per check result if it is provided. 
     \n\n\n******\n\n\n
@@ -410,7 +416,8 @@ export function getConsequenceGuidancePrompt(sceneNarration: string, actionText:
     Do NOT mention the check results, DC, or roll numbers in your guidance.
     Do NOT suggest new actions or next steps, only focus on the consequences of the action taken.
     Do NOT make up new information not implied by the scene or action.
-    Do NOT repeat information already present in the scene or action text.`,
+    Do NOT repeat information already present in the scene or action text.
+    Do NOT include dialogue or character speech in your guidance.`,
   };
 }
 
@@ -460,7 +467,7 @@ export function getLocationChangePrompt(
         Use this information as context to Narrate this transition in 2 Sentences below: \n 
         In a simple single sentence describe the reason for the new scene in the continuity of the story (e.g., continuing a quest, seeking something, fleeing) in 100 words or less. \n 
         In a simple single sentences describe the new location's immediate relevance to the protagonist's ongoing plot or implied goal in 100 words or less. \n 
-        Ensure your narration aligns with D&D 5e fantasy themes, character abilities, and suitable for role-playing scenarios and no more than 200 words in total.`,
+         Ensure your narration aligns with D&D 5e fantasy themes, character abilities, and suitable for role-playing scenarios and no more than 200 words in total.`,
   };
 }
 
@@ -473,7 +480,7 @@ export function getLocationChangePrompt(
  */
 export function getCombatantsPrompt(sceneNarration: string, protagonistName: string): Prompt {
   return {
-    system: "You are an expert DM in Dungeons & Dragons 5th Edition in the narrative style of famous DM Matt Mercer.",
+    system: "You are a helpful DM using D&D 5th Edition rules in the narrative style of famous DM Matt Mercer.",
     user: `Based on the following scene narration, identify the combat participants: 
     
     Scene: ${sceneNarration} 
@@ -492,4 +499,81 @@ export function getCombatantsPrompt(sceneNarration: string, protagonistName: str
       "encounterDescription": "A brief description of the combat encounter."
     }`,
   };
+}
+
+export function getCombatRoundActionsPrompt(battle: Battle, playerAction: string): Prompt {
+  const combatantStates = battle.combatants.map(c => `  - ${c.id} (Status: ${c.status}, HP: ${c.currentHp}/${c.maxHp})`).join('\n');
+
+  const jsonSchema = {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Combat Round Actions",
+    "description": "An array of actions to be performed by combatants in a single round.",
+    "type": "array",
+    "items": {
+      "$ref": "#/definitions/CombatAction"
+    },
+    "definitions": {
+      "CombatAction": {
+        "type": "object",
+        "title": "Combat Action",
+        "description": "A single action taken by a combatant.",
+        "properties": {
+          "actorId": {
+            "type": "string",
+            "description": "The unique name of the combatant performing the action."
+          },
+          "actionType": {
+            "type": "string",
+            "description": "The type of action being performed.",
+            "enum": ["Attack", "CastSpell", "Dash", "Dodge", "Disengage", "Help", "Hide", "Ready", "Search", "UseObject"]
+          },
+          "targetId": {
+            "type": "string",
+            "description": "The unique name of the target combatant. Optional."
+          },
+          "description": {
+            "type": "string",
+            "description": "A brief narrative description of the action."
+          }
+        },
+        "required": ["actorId", "actionType", "description"]
+      }
+    }
+  };
+
+  return {
+    system: `You are a helpful DM using D&D 5th Edition rules. Your task is to determine the actions for all non-player combatants for the current round of combat based on the provided battle state. You must respond with a valid JSON object that conforms to the provided schema.`, 
+    user: `We are in round ${battle.roundNumber} of combat. The player has declared the following action: "${playerAction}".
+    The current state of all combatants is:
+    ${combatantStates}
+
+    The previous combat log is:
+    ${battle.combatLog.join('\n')}
+
+    Based on this information, decide the action for every *other* active combatant. An active combatant has the status "active".
+    Your response MUST be a JSON array of "CombatAction" objects, conforming to this schema:
+    ${JSON.stringify(jsonSchema, null, 2)}`,
+  };
+}
+
+/**
+ * @function getCombatRoundNarrationPrompt
+ * @description Constructs a prompt to generate a narrative summary of a combat round.
+ * @param combatLog - An array of strings detailing the events of the combat round.
+ * @returns A Prompt object for generating the combat round narration.
+ */
+
+export function getCombatRoundNarrationPrompt(combatLog: string[]): Prompt {
+  return {
+    system: `You are a ruthless DM using D&D 5th Edition rules, known for weaving exciting and descriptive combat narratives in the style of Matt Mercer. 
+    Your task is to take a structured combat log and transform it into a single, fluid, and engaging paragraph that tells the story of the round.`,
+    user: `Based on the following combat log, create a comprehensive and engaging narrative summary of the entire round.
+
+    Combat Log:
+    ${combatLog.join('\n')}
+
+    Combine these events into a single, cohesive paragraph. Describe the actions, reactions, and outcomes in a way that brings the scene to life. 
+    Focus on vivid descriptions and the flow of battle. Do not break it into separate lines or bullet points.
+    Your entire response must be a single paragraph.`,
+ };
 }

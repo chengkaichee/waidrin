@@ -254,11 +254,12 @@ export interface IGameRuleLogic {
    * @description Applies state changes based on the outcome of a check or event.
    * This method is called internally by `resolveCheck` and is solely responsible for modifying the plugin's internal state.
    * @param {string} eventType - The type of event triggering the consequence (e.g., "damage_dealt", "status_effect_applied").
+   * @param {WritableDraft<State>} context - The current game state. (Note: Direct mutation of this `WritableDraft` object is the intended way to update state.)
    * @param {string[]} [checkResultStatements] - Optional: Statements describing results of checks that led to this consequence.
    * @param {string} [action] - Optional: The action that triggered the consequence.
    * @returns {void}
    */
-  handleConsequence?(eventType: string, checkResultStatements?: string[], action?: string): void;
+  handleConsequence?(eventType: string, context: WritableDraft<State>, checkResultStatements?: string[], action?: string): void;
   
   /**
    * @method getActions
