@@ -171,7 +171,8 @@ export function narratePrompt(state: State, action?: string, checkResultStatemen
 ${action ? `The protagonist (${state.protagonist.name}) has chosen to do the following: ${action}.` : ""}${checkResultsText}
 Narrate what happens next, using novel-style prose, in the present tense.
 Prioritize dialogue over descriptions.
-Do not mention more than 2 different characters in your narration.
+Mention as many characters as necessary, but no more than 2 different characters should have dialogue lines in your narration.
+Mention who is in protagonist's adventure party, subtly weaving them into the story.
 Refer to characters using their first names.
 Make all character names bold by surrounding them with double asterisks (**Name**).
 Write 2-3 paragraphs (no more than 200 words in total).

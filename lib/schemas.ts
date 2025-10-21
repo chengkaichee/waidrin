@@ -64,7 +64,8 @@ export const Gender = z.enum(["male", "female"]);
  * @constant Race
  * @description Zod enum schema for character race.
  */
-export const Race = z.enum(["human", "elf", "dwarf"]);
+export const Race = z.enum(["human", "elf", "dwarf", //More common fantasy races follow
+  "monster"]);
 
 /**
  * @constant Character
@@ -82,7 +83,10 @@ export const Character = z.object({
  * @constant LocationType
  * @description Zod enum schema for different types of locations.
  */
-export const LocationType = z.enum(["tavern", "market", "road"]);
+export const LocationType = z.enum(["tavern", "market", "road", //additional types follow
+  "forest", "street", "mountain", "waterfall", // nature and outdoor
+  "castle", "village", "cave", "harbor", "gate", "bridge", // settlements and structures
+  "dungeon", "shop", "chamber", "inn", "temple", "bedroom", "graveyard", "stable"]); // buildings and special locations
 
 /**
  * @constant Location

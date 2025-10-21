@@ -8,9 +8,11 @@ import { useState, useEffect, useRef } from "react";
 import { GiAllSeeingEye, GiAcousticMegaphone, GiCancel, GiCardExchange, GiBigGear } from "react-icons/gi";
 import { RxCross2, RxTriangleDown, RxTriangleRight } from "react-icons/rx";
 import { useShallow } from "zustand/shallow";
-import { type StoredState, useStateStore } from "@/lib/state";
+import { type StoredState, useStateStore, getState } from "@/lib/state";
 import { type IAppBackend } from "@/app/services/AppBackend";
-import { type Prompt } from "@/lib/prompts";
+import { generateActionsPrompt, type Prompt } from "@/lib/prompts";
+import { Action } from "@/lib/schemas";
+import * as z from "zod/v4";
 
 // https://github.com/mac-s-g/react-json-view/issues/121#issuecomment-2578199942
 const ReactJsonView = dynamic(() => import("@microlink/react-json-view"), { ssr: false });
@@ -89,6 +91,24 @@ export default function StateDebugger({ appBackend }: { appBackend: IAppBackend 
       }
     );
     setNarrationError(null); // Clear any previous errors
+    handleReplaceActions();
+  };
+
+  const handleReplaceActions = async () => {
+    if (narrationIsLoading) return;
+    setNarrationIsLoading(true);
+    setNarrationError(null);
+
+    try {
+      const newActions = await appBackend.getObject(await generateActionsPrompt(getState()), z.array(Action));
+      setState((stateDraft) => {
+        stateDraft.actions = newActions;
+      });
+    } catch (error: any) {
+      setNarrationError(error.message || "An unknown error occurred.");
+    } finally {
+      setNarrationIsLoading(false);
+    }
   };
 
   // Remove properties containing functions to avoid corrupting them,

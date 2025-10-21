@@ -10429,6 +10429,16 @@ var CombatActionSchema = object({
   actionType: _enum2(["Attack", "CastSpell", "Dash", "Dodge", "Disengage", "Help", "Hide", "Ready", "Search", "UseObject", "Move", "Other"]),
   targetId: string2().optional(),
   description: string2()
+  //Include TargetId only for actions that require a target
+}).refine((data) => {
+  if (["Attack", "CastSpell", "Help", "UseObject"].includes(data.actionType)) {
+    return data.targetId !== void 0;
+  }
+  return true;
+}, {
+  message: "targetId is required for Attack, CastSpell, Help, and UseObject action types",
+  path: ["targetId"]
+  //End of refine
 });
 var CombatRoundActionsSchema = array(CombatActionSchema);
 var DnDStatsSchema = object({
@@ -11158,38 +11168,55 @@ function getLocationChangePrompt(previousLocationName, newLocationName, newLocat
          Ensure your narration aligns with D&D 5e fantasy themes, character abilities, and suitable for role-playing scenarios and no more than 200 words in total.`
   };
 }
-function getCombatantsPrompt(sceneNarration, protagonistName) {
+function getCombatantsPrompt(sceneNarration, protagonistName, knownCharacters) {
   return {
-    system: "You are a helpful DM using D&D 5th Edition rules in the narrative style of famous DM Matt Mercer.",
-    user: `Based on the following scene narration, identify the combat participants: 
-    
-    Scene: ${sceneNarration} 
-    Protagonist: ${protagonistName} 
-    
-    Provide a JSON object with the following structure:
-    { "friendlyCharacters": [
-    { "name": "Protagonist's Name" },
-    { "name": "Ally 1 Name" }
-    ],
-      "namedEnemies": [
-    { "name": "Enemy 1 Name" },
-    { "name": "Enemy 2 Name" }
-    ],
-      "unnamedEnemiesCount": 0,
-      "encounterDescription": "A brief description of the combat encounter."
-    }`
+    system: "You are a helpful DM using D&D 5th Edition rules in the narrative style of famous DM Matt Mercer. Your task is to identify all combatants in a scene and categorize them.",
+    user: `Based on the following scene narration, identify all combat participants. 
+
+    Scene: "${sceneNarration}"
+    Protagonist: "${protagonistName}"
+    Known Characters in the world: [${knownCharacters.join(", ")}]
+
+    Categorize the combatants into a JSON object with the following structure:
+    {
+      "knownCharacters": [
+        { "name": "Character Name from Known List", "isFriendly": true/false }
+      ],
+      "newNamedCharacters": [
+        { "name": "New Villain Name", "isFriendly": false, "description": "A brief description of their appearance." }
+      ],
+      "unnamedEnemies": {
+        "count": 2,
+        "type": "Monster Type from Narration"
+      },
+      "encounterDescription": "A brief, narrative description of how the combat starts."
+    }
+
+    - If a character from the scene is in the 'Known Characters' list, add them to the 'knownCharacters' array.
+    - If a character is named in the scene but NOT in the 'Known Characters' list, add them to the 'newNamedCharacters' array.
+    - For generic enemies (e.g., 'goblins', 'assassins'), use the 'unnamedEnemies' object.
+    - For 'unnamedEnemies', the 'type' field MUST be the type of monster described in the scene narration (e.g., "Orc", "Wolf", "Bandit").
+    - The protagonist, "${protagonistName}", should always be included in the 'knownCharacters' array as friendly.`
   };
 }
 function getCombatRoundActionsPrompt(battle, playerAction) {
-  const combatantStates = battle.combatants.map((c) => `  - ${c.id} (Status: ${c.status}, HP: ${c.currentHp}/${c.maxHp})`).join("\n");
+  const combatantStates = battle.combatants.map((c) => `  - ${c.id} (Status: ${c.status}, HP: ${c.currentHp}/${c.maxHp}, Friendly: ${c.isFriendly})`).join("\n");
+  console.log("DEBUG: Combatant States sent to Combat Action LLM:\n", combatantStates);
   const jsonSchema = {
     "$schema": "http://json-schema.org/draft-07/schema#",
-    "title": "Combat Round Actions",
-    "description": "An array of actions to be performed by combatants in a single round.",
-    "type": "array",
-    "items": {
-      "$ref": "#/definitions/CombatAction"
+    "title": "Combat Round Actions Response",
+    "description": "A response object containing an array of actions.",
+    "type": "object",
+    "properties": {
+      "actions": {
+        "type": "array",
+        "description": "An array of actions to be performed by combatants in a single round.",
+        "items": {
+          "$ref": "#/definitions/CombatAction"
+        }
+      }
     },
+    "required": ["actions"],
     "definitions": {
       "CombatAction": {
         "type": "object",
@@ -11203,11 +11230,11 @@ function getCombatRoundActionsPrompt(battle, playerAction) {
           "actionType": {
             "type": "string",
             "description": "The type of action being performed.",
-            "enum": ["Attack", "CastSpell", "Dash", "Dodge", "Disengage", "Help", "Hide", "Ready", "Search", "UseObject"]
+            "enum": ["Attack", "CastSpell", "Dash", "Dodge", "Disengage", "Help", "Hide", "Ready", "Search", "UseObject", "Move", "Other"]
           },
           "targetId": {
             "type": "string",
-            "description": "The unique name of the target combatant. Optional."
+            "description": "The unique name of the target combatant. This is REQUIRED for actions like 'Attack', 'CastSpell', and 'Help'."
           },
           "description": {
             "type": "string",
@@ -11219,16 +11246,38 @@ function getCombatRoundActionsPrompt(battle, playerAction) {
     }
   };
   return {
-    system: `You are a helpful DM using D&D 5th Edition rules. Your task is to determine the actions for all non-player combatants for the current round of combat based on the provided battle state. You must respond with a valid JSON object that conforms to the provided schema.`,
-    user: `We are in round ${battle.roundNumber} of combat. The player has declared the following action: "${playerAction}".
-    The current state of all combatants is:
-    ${combatantStates}
+    system: `You are a helpful DM using D&D 5th Edition rules. Your task is to determine the actions for all non-player combatants for the current round of combat based on the provided battle state. You must respond with a valid JSON object that conforms to the provided schema.
 
+    **Strict Targeting Rules (Non-negotiable):**
+    - An 'Attack' action from a friendly combatant (Friendly: true) MUST target an enemy combatant (Friendly: false).
+    - An 'Attack' action from an enemy combatant (Friendly: false) MUST target a friendly combatant (Friendly: true).
+    - Healing or 'Help' actions from a friendly combatant (isFriendly: true) MUST target another friendly combatant (isFriendly: true).
+    - Under no circumstances should a combatant target a member of its own side with a harmful action.
+
+    **Core Combat Strategies:**
+
+    **Friendly Combatant Strategy (Collective Survival):**
+    Your primary goal is to ensure the party survives. Allies should act as a coordinated team.
+    - **Prioritize Preservation:** If a friendly combatant has low HP (less than 25% of their max HP) or is 'unconscious', other friendly units with healing abilities (spells, potions) MUST prioritize healing or stabilizing them.
+    - **Teamwork:** Friendly combatants should use the 'Help' action to grant advantage to a powerful ally's attack against a key enemy.
+    - **Protect the Vulnerable:** Characters with defensive abilities should use them to protect allies who are low on health or are concentrating on important spells.
+
+    **Enemy Combatant Strategy (Strategic Elimination):**
+    Enemies fight to win and will use cunning tactics. They are not mindless and will coordinate.
+    - **Focus Fire:** Enemy units MUST coordinate their attacks on a single high-priority player target until that target is neutralized (unconscious or dead).
+    - **Identify Threats:** A high-priority target is typically the character who has dealt the most damage (check the combat log), is a known healer, or has the lowest remaining HP.
+    - **Leader Directives:** If an intelligent leader (e.g., a Hobgoblin Captain) is present, their actions should reflect directing their minions to focus fire on the chosen target.
+    - **Avoid Unfavorable Fights:** Weaker enemies (e.g., Goblins) should avoid engaging powerful player characters in one-on-one combat. They should swarm a single target or attack from a distance if possible.`,
+    user: `We are in round ${battle.roundNumber} of combat. The player has declared the following action: "${playerAction}".
     The previous combat log is:
     ${battle.combatLog.join("\n")}
-
-    Based on this information, decide the action for every *other* active combatant. An active combatant has the status "active".
-    Your response MUST be a JSON array of "CombatAction" objects, conforming to this schema:
+    Based on this information, decide the action for each combatant (both friendly and enemies). An active combatant has the status "active".
+    For any action that targets another combatant (like 'Attack' or 'Help'), you MUST include the 'targetId' field, using the exact ID from the list of combatants.
+    
+    Decide the best action for each of the following combatants ONCE:
+    ${combatantStates}
+    
+    Your response MUST be a JSON object with a single key "actions" which contains an array of "CombatAction" objects, conforming to this schema:
     ${JSON.stringify(jsonSchema, null, 2)}`
   };
 }
@@ -11244,6 +11293,22 @@ function getCombatRoundNarrationPrompt(combatLog) {
     Combine these events into a single, cohesive paragraph. Describe the actions, reactions, and outcomes in a way that brings the scene to life. 
     Focus on vivid descriptions and the flow of battle. Do not break it into separate lines or bullet points.
     Your entire response must be a single paragraph.`
+  };
+}
+function assignPlotType(narrationText, plotTypes) {
+  return {
+    system: `You are a game state analyzer. Your only task is to analyze the provided narration and classify it into the most fitting category from the given list. The categories are: ${plotTypes.join(", ")}.`,
+    user: `Based on the following narration, choose the single most appropriate plot type from the list below.
+- combat: An immediate physical conflict is starting or ongoing.
+- chase: The protagonist is actively pursuing or being pursued by someone.
+- puzzle: The scene presents a riddle, a complex mechanism, or a problem requiring clever thinking.
+- roleplay: The focus is on dialogue, social interaction, and character development.
+- shop: The protagonist is in a place of commerce with the primary intent to buy or sell goods.
+- general: None of the other categories fit well. This is for standard exploration, travel, or transitional narration.
+
+Narration: """${narrationText}"""
+
+Return only the single best-fitting plot type from the list, and nothing else.`
   };
 }
 
@@ -11501,7 +11566,7 @@ var DndStatsPlugin = class {
       return [];
     }
     if (this.settings.plotType === "combat" && action) {
-      const combatNarration2 = await this.executeCombatRound(action);
+      const combatNarration2 = await this.executeCombatRound(action, context);
       const dndStyleGuidance2 = getDndNarrationGuidance(eventType);
       const consolidatedGuidance2 = `${dndStyleGuidance2}
 
@@ -11588,15 +11653,16 @@ ${combatNarration}`;
    * @param {string} playerAction - The action taken by the player character.
    * @returns {Promise<string>} A promise that resolves to a string containing the combat round's narration.
    */
-  async executeCombatRound(playerAction) {
+  async executeCombatRound(playerAction, context) {
     var _a;
     if (!this.settings || !this.appBackend || !this.settings.encounter) {
       console.error("Settings, backend, or encounter not available for executing combat round.");
       return "";
     }
     const battle = this.settings.encounter;
-    battle.combatLog = [];
     const prompt = getCombatRoundActionsPrompt(battle, playerAction);
+    console.log("DEBUG: Prompt for LLM generated character actions:", JSON.stringify(prompt, null, 2));
+    battle.combatLog = [];
     let npcActions = [];
     try {
       const TempCombatRoundActionsResponseSchema = object({
@@ -11604,21 +11670,39 @@ ${combatNarration}`;
       });
       const combatRoundResponse = await this.appBackend.getObject(prompt, TempCombatRoundActionsResponseSchema);
       npcActions = combatRoundResponse.actions;
-      console.log("NPC Actions:", npcActions);
     } catch (error39) {
-      console.error("Error getting NPC actions from LLM, using fallback:", error39);
-      const activeNpcs = battle.combatants.filter((c) => !c.isFriendly && canCombatantAct(c.status));
-      const potentialTargets = battle.combatants.filter((c) => c.isFriendly && canCombatantAct(c.status));
-      if (potentialTargets.length > 0) {
-        for (const npc of activeNpcs) {
-          const target = potentialTargets[Math.floor(Math.random() * potentialTargets.length)];
-          const fallbackAction = {
-            actorId: npc.id,
-            actionType: "Attack",
-            targetId: target.id,
-            description: `${npc.id} attacks ${target.id}.`
-          };
-          npcActions.push(fallbackAction);
+      console.error("Error getting NPC actions from LLM, using fallback for all NPCs:", error39);
+      npcActions = [];
+    }
+    const activeNonPlayerCombatants = battle.combatants.filter((c) => c.characterIndex !== -1 && canCombatantAct(c.status));
+    const npcsWithActions = npcActions.map((a) => a.actorId);
+    for (const combatant of activeNonPlayerCombatants) {
+      if (!npcsWithActions.includes(combatant.id)) {
+        console.log(`Generating fallback action for ${combatant.id} who was missed by the LLM.`);
+        if (combatant.isFriendly) {
+          const enemyTargets = battle.combatants.filter((c) => !c.isFriendly && canCombatantAct(c.status));
+          if (enemyTargets.length > 0) {
+            const target = enemyTargets[Math.floor(Math.random() * enemyTargets.length)];
+            const fallbackAction = {
+              actorId: combatant.id,
+              actionType: "Attack",
+              targetId: target.id,
+              description: `${combatant.id} attacks ${target.id}.`
+            };
+            npcActions.push(fallbackAction);
+          }
+        } else {
+          const potentialTargets = battle.combatants.filter((c) => c.isFriendly && canCombatantAct(c.status));
+          if (potentialTargets.length > 0) {
+            const target = potentialTargets[Math.floor(Math.random() * potentialTargets.length)];
+            const fallbackAction = {
+              actorId: combatant.id,
+              actionType: "Attack",
+              targetId: target.id,
+              description: `${combatant.id} attacks ${target.id}.`
+            };
+            npcActions.push(fallbackAction);
+          }
         }
       }
     }
@@ -11642,25 +11726,31 @@ ${combatNarration}`;
       }
     });
     allActions.sort((a, b) => b.initiative - a.initiative);
+    console.log("DEBUG: All Actions in Initiative Order:", allActions);
     for (const action of allActions) {
       const combatant = battle.combatants.find((c) => c.id === action.actorId);
       if (combatant && canCombatantAct(combatant.status)) {
-        this.resolveCombatAction(action);
+        this.resolveCombatAction(action, context);
       }
     }
     const remainingEnemies = battle.combatants.filter((c) => !c.isFriendly && canCombatantAct(c.status));
     const remainingFriendlies = battle.combatants.filter((c) => c.isFriendly && canCombatantAct(c.status));
     if (remainingEnemies.length === 0) {
+      console.log("DEBUG: COMBAT ENDED - VICTORY");
       battle.combatLog.push("All enemies have been defeated! Combat is over.");
       this.settings.plotType = "general";
       this.settings.encounter = void 0;
     } else if (remainingFriendlies.length === 0) {
+      console.log("DEBUG: COMBAT ENDED - DEFEAT");
       battle.combatLog.push("All friendly characters have been defeated! Combat is over.");
       this.settings.plotType = "general";
       this.settings.encounter = void 0;
     } else {
+      console.log("DEBUG: Enemies remaining: ", remainingEnemies.length, " | Friendlies remaining: ", remainingFriendlies.length);
+      battle.combatLog.push("Battle is still ongoing... preparing for next round in this same location!");
       battle.roundNumber++;
     }
+    console.log("DEBUG: COMBAT LOG:", battle.combatLog);
     const narrationPrompt = getCombatRoundNarrationPrompt(battle.combatLog);
     const roundNarration = await this.appBackend.getNarration(narrationPrompt);
     return roundNarration;
@@ -11673,7 +11763,7 @@ ${combatNarration}`;
    * and checks if the target is defeated. For other actions, it logs a descriptive message.
    * @param {CombatAction} action - The combat action to resolve.
    */
-  resolveCombatAction(action) {
+  resolveCombatAction(action, context) {
     if (!this.settings || !this.settings.encounter || !this.appLibs || !this.appStateManager) {
       console.error("Cannot resolve combat action: missing settings, encounter, appLibs, or appStateManager.");
       return;
@@ -11691,8 +11781,7 @@ ${combatNarration}`;
           battle.combatLog.push(`${attacker.id} attacks, but the target is invalid.`);
           return;
         }
-        const globalState = this.appStateManager.getGlobalState();
-        const attackerCharacter = attacker.characterIndex === -1 ? globalState.protagonist : globalState.characters[attacker.characterIndex];
+        const attackerCharacter = attacker.characterIndex === -1 ? context.protagonist : context.characters[attacker.characterIndex];
         if (!attackerCharacter) {
           battle.combatLog.push(`Character data for ${attacker.id} not found.`);
           return;
@@ -11708,13 +11797,11 @@ ${combatNarration}`;
           if (target.currentHp <= 0) {
             target.status = "dead";
             battle.combatLog.push(`${target.id} has been defeated.`);
-            if (target.characterIndex !== -1 && globalState.characters[target.characterIndex]) {
-              this.appStateManager.setGlobalState(async (state) => {
-                const character = state.characters[target.characterIndex];
-                if (character) {
-                  character.biography += "\n(DEFEATED IN COMBAT)";
-                }
-              });
+            if (target.characterIndex !== -1 && context.characters[target.characterIndex]) {
+              const character = context.characters[target.characterIndex];
+              if (character) {
+                character.biography += "\n(DEFEATED IN COMBAT)";
+              }
             }
           }
         }
@@ -11758,21 +11845,22 @@ ${combatNarration}`;
     const PCStats = this.settings;
     const rpgDiceRoller = this.appLibs.rpgDiceRoller;
     if (eventType === "initiative_triggered" && PCStats.plotType !== "combat") {
+      console.log("DEBUG: COMBAT STARTED");
       PCStats.plotType = "combat";
       const CombatantsLLMSchema = object({
-        friendlyCharacters: array(object({
+        knownCharacters: array(object({
           name: string2(),
-          currentHp: number2().int().min(1),
-          maxHp: number2().int().min(1)
-        })),
-        namedEnemies: array(object({
+          isFriendly: boolean2()
+        })).optional(),
+        newNamedCharacters: array(object({
           name: string2(),
-          currentHp: number2().int().min(1),
-          maxHp: number2().int().min(1)
-        })),
-        unnamedEnemiesCount: number2().int().min(0),
-        unnamedEnemiesDefaultHp: number2().int().min(1).optional(),
-        // New: Default HP for unnamed enemies
+          isFriendly: boolean2(),
+          description: string2()
+        })).optional(),
+        unnamedEnemies: object({
+          count: number2().int().min(0),
+          type: string2()
+        }).optional(),
         encounterDescription: string2().optional()
       });
       let sceneNarration = "";
@@ -11785,7 +11873,8 @@ ${combatNarration}`;
           }
         }
       }
-      const combatantsPrompt = getCombatantsPrompt(sceneNarration, context.protagonist.name || "");
+      const knownCharacterNames = context.characters.map((c) => c.name);
+      const combatantsPrompt = getCombatantsPrompt(sceneNarration, context.protagonist.name || "", knownCharacterNames);
       const combatantsLLMResponse = await this.appBackend.getObject(combatantsPrompt, CombatantsLLMSchema);
       const allCombatants = [];
       if (context.protagonist) {
@@ -11803,82 +11892,89 @@ ${combatNarration}`;
           isFriendly: true
         });
       }
-      for (const char of combatantsLLMResponse.friendlyCharacters) {
-        if (context.protagonist && char.name === context.protagonist.name) {
-          continue;
+      if (combatantsLLMResponse.knownCharacters) {
+        for (const char of combatantsLLMResponse.knownCharacters) {
+          if (context.protagonist && char.name === context.protagonist.name) {
+            continue;
+          }
+          const charIndex = context.characters.findIndex((c) => c.name === char.name);
+          if (charIndex !== -1) {
+            const initiativeRoll = new rpgDiceRoller.DiceRoll(`1d20`);
+            allCombatants.push({
+              id: char.name,
+              characterIndex: charIndex,
+              currentHp: 24,
+              // Placeholder HP, ideally get from character state
+              maxHp: 24,
+              // Placeholder HP
+              status: "active",
+              initiativeRoll: initiativeRoll.total,
+              isFriendly: char.isFriendly
+            });
+          }
         }
-        let charIndex = context.characters.findIndex((c) => c.name === char.name);
-        if (charIndex === -1 || charIndex === void 0) {
-          charIndex = context.characters.length || 0;
-          context.characters.push(__spreadProps(__spreadValues({}, char), { gender: "male", race: "human", biography: "", locationIndex: 0 }));
-        }
-        const initiativeRoll = new rpgDiceRoller.DiceRoll(`1d20`);
-        allCombatants.push({
-          id: char.name,
-          characterIndex: charIndex,
-          currentHp: char.currentHp,
-          // Use HP from LLM
-          maxHp: char.maxHp,
-          // Use HP from LLM
-          status: "active",
-          initiativeRoll: initiativeRoll.total,
-          isFriendly: true
-        });
       }
-      for (const char of combatantsLLMResponse.namedEnemies) {
-        let charIndex = context.characters.findIndex((c) => c.name === char.name);
-        if (charIndex === -1 || charIndex === void 0) {
-          charIndex = context.characters.length || 0;
-          context.characters.push(__spreadProps(__spreadValues({}, char), { gender: "male", race: "human", biography: "", locationIndex: 0 }));
+      if (combatantsLLMResponse.newNamedCharacters) {
+        for (const char of combatantsLLMResponse.newNamedCharacters) {
+          const newChar = {
+            name: char.name,
+            biography: char.description,
+            gender: "male",
+            // Placeholder
+            race: "human",
+            // Placeholder
+            locationIndex: context.protagonist.locationIndex
+            // Assume same location
+          };
+          context.characters.push(newChar);
+          const charIndex = context.characters.length - 1;
+          const initiativeRoll = new rpgDiceRoller.DiceRoll(`1d20`);
+          allCombatants.push({
+            id: char.name,
+            characterIndex: charIndex,
+            currentHp: 24,
+            // Placeholder HP
+            maxHp: 24,
+            // Placeholder HP
+            status: "active",
+            initiativeRoll: initiativeRoll.total,
+            isFriendly: char.isFriendly
+          });
         }
-        const initiativeRoll = new rpgDiceRoller.DiceRoll(`1d20`);
-        allCombatants.push({
-          id: char.name,
-          characterIndex: charIndex,
-          currentHp: char.currentHp,
-          // Use HP from LLM
-          maxHp: char.maxHp,
-          // Use HP from LLM
-          status: "active",
-          initiativeRoll: initiativeRoll.total,
-          isFriendly: false
-        });
       }
-      for (let i = 0; i < combatantsLLMResponse.unnamedEnemiesCount; i++) {
-        const enemyName = `Unnamed Enemy ${i + 1}`;
-        const enemyChar = {
-          name: enemyName,
-          gender: "male",
-          // Placeholder
-          race: "human",
-          // Placeholder
-          biography: "A generic enemy.",
-          // Placeholder
-          locationIndex: 0
-          // Placeholder
-        };
-        let charIndex = context.characters.length || 0;
-        context.characters.push(enemyChar);
-        const initiativeRoll = new rpgDiceRoller.DiceRoll(`1d20`);
-        allCombatants.push({
-          id: enemyName,
-          characterIndex: charIndex,
-          currentHp: 20,
-          // Placeholder HP
-          maxHp: 20,
-          // Placeholder HP
-          status: "active",
-          initiativeRoll: initiativeRoll.total,
-          isFriendly: false
-        });
+      if (combatantsLLMResponse.unnamedEnemies && combatantsLLMResponse.unnamedEnemies.count > 0) {
+        for (let i = 0; i < combatantsLLMResponse.unnamedEnemies.count; i++) {
+          const enemyName = `${combatantsLLMResponse.unnamedEnemies.type} ${i + 1}`;
+          const enemyChar = {
+            name: enemyName,
+            gender: "male",
+            race: "monster",
+            biography: `A generic ${combatantsLLMResponse.unnamedEnemies.type}.`,
+            locationIndex: context.protagonist.locationIndex
+          };
+          context.characters.push(enemyChar);
+          const charIndex = context.characters.length - 1;
+          const initiativeRoll = new rpgDiceRoller.DiceRoll(`1d20`);
+          allCombatants.push({
+            id: enemyName,
+            characterIndex: charIndex,
+            currentHp: 8,
+            // Placeholder HP
+            maxHp: 8,
+            // Placeholder HP
+            status: "active",
+            initiativeRoll: initiativeRoll.total,
+            isFriendly: false
+          });
+        }
       }
       allCombatants.sort((a, b) => b.initiativeRoll - a.initiativeRoll);
       PCStats.encounter = {
         roundNumber: 1,
         combatants: allCombatants,
         combatLog: ["Combat initiated."]
-        //to-do: put actual logic in here to log actions and increase round number
       };
+      console.log("DEBUG: Characters at end of handleConsequence:", JSON.stringify(context.characters, null, 2));
     }
   }
   /**
@@ -11887,12 +11983,36 @@ ${combatNarration}`;
    * @returns {Promise<string[]>} A promise that resolves to an array of action strings.
    */
   async getActions() {
-    if (!this.settings) {
-      console.error("Settings not available for getActions.");
+    if (!this.settings || !this.appBackend || !this.appStateManager) {
+      console.error("Settings, backend, or state manager not available for getActions.");
       return [];
     }
-    const PCStats = this.settings;
-    if (PCStats.plotType === "combat") {
+    if (this.settings.plotType === "combat" && this.settings.encounter) {
+      return ["Attack", "Defend", "Cast Spell", "Use Item", "Flee"];
+    }
+    const latestNarrationEvent = [...this.appStateManager.getGlobalState().events].reverse().find((event) => event.type === "narration");
+    if (latestNarrationEvent && latestNarrationEvent.text) {
+      const plotTypePrompt = assignPlotType(latestNarrationEvent.text, Object.values(PlotType.enum));
+      try {
+        const startTime = Date.now();
+        const llmResponse = await this.appBackend.getNarration(plotTypePrompt);
+        const parsedPlotType = PlotType.parse(llmResponse.trim());
+        const endTime = Date.now();
+        const duration3 = (endTime - startTime) / 1e3;
+        console.log(`DEBUG: @getActions PlotType updated to: ${this.settings.plotType} in ${duration3} seconds`);
+        if (parsedPlotType === "combat" && !this.settings.encounter) {
+          console.log("DEBUG: @getActions detected combat, calling setGlobalState to initialize.");
+          await this.appStateManager.setGlobalState(async (draft) => {
+            await this.handleConsequence("initiative_triggered", draft, [], "Combat started from narration");
+          });
+          return ["Attack", "Defend", "Cast Spell", "Use Item", "Flee"];
+        }
+        this.settings.plotType = parsedPlotType;
+      } catch (error39) {
+        console.error("Error assigning plot type:", error39);
+      }
+    }
+    if (this.settings.plotType === "combat" && this.settings.encounter) {
       return ["Attack", "Defend", "Cast Spell", "Use Item", "Flee"];
     } else {
       return ["Explore", "Talk", "Rest", "Search", "Use Item", "Examine", "Use non-combat magic", "Use skill"];

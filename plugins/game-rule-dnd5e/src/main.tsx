@@ -16,8 +16,8 @@ import type { Context } from "@/app/plugins";
 import type { Prompt } from "@/lib/prompts";
 import type * as RadixThemes from '@radix-ui/themes';
 import type { useShallow } from 'zustand/shallow';
-import { DnDStats, generateDefaultDnDStats, DnDClassData, DnDStatsSchema, resolveCheck as getResolveCheck, Combatant, canCombatantAct, CombatAction, CombatRoundActionsSchema, CheckResult } from "./pluginData";
-import { getBackstory, modifyProtagonistPromptForDnd, getChecksPrompt, getConsequenceGuidancePrompt, getDndNarrationGuidance, getLocationChangePrompt, getCombatantsPrompt, getCombatRoundActionsPrompt, getCombatRoundNarrationPrompt } from "./pluginPrompt";
+import { DnDStats, generateDefaultDnDStats, DnDClassData, DnDStatsSchema, resolveCheck as getResolveCheck, Combatant, canCombatantAct, CombatAction, CombatRoundActionsSchema, CheckResult, PlotType } from "./pluginData";
+import { getBackstory, modifyProtagonistPromptForDnd, getChecksPrompt, getConsequenceGuidancePrompt, getDndNarrationGuidance, getLocationChangePrompt, getCombatantsPrompt, getCombatRoundActionsPrompt, getCombatRoundNarrationPrompt, assignPlotType } from "./pluginPrompt";
 import * as z from "zod/v4";
 
 import type { Character, State, CheckResolutionResult } from "@/lib/state"; // Import Character and State
@@ -409,9 +409,9 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
       return [];
     }
 
-    // If in combat, execute the combat round and generate narration from it.
+    // If in combat and the user provided an action, execute the combat round and generate narration from it.
     if (this.settings.plotType === "combat" && action) {
-      const combatNarration = await this.executeCombatRound(action);
+      const combatNarration = await this.executeCombatRound(action, context);
       const dndStyleGuidance = getDndNarrationGuidance(eventType);
       const consolidatedGuidance = `${dndStyleGuidance}\n\n${combatNarration}`;
       return [consolidatedGuidance];
@@ -420,7 +420,7 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
     const PCStats = this.settings as DnDStats;
     const checkResultStatements = checkResolutionResults?.map(cr => cr.resultStatement) || [];
 
-    // Logic for other event types (user actions, combat, etc.). Find the most recent *completed* narration event
+    // Logic for other event types (user actions, etc.). Find the most recent *completed* narration event
     let sceneNarration = "";
     for (let i = context.events.length - 1; i >= 0; i--) {
       const event = context.events[i];
@@ -526,48 +526,76 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
    * @param {string} playerAction - The action taken by the player character.
    * @returns {Promise<string>} A promise that resolves to a string containing the combat round's narration.
    */
-  private async executeCombatRound(playerAction: string): Promise<string> {
+  private async executeCombatRound(playerAction: string, context: WritableDraft<State>): Promise<string> {
     if (!this.settings || !this.appBackend || !this.settings.encounter) {
       console.error("Settings, backend, or encounter not available for executing combat round.");
       return "";
     }
 
     const battle = this.settings.encounter;
-    // Clear the log at the start of the round to only include this round's events
-    battle.combatLog = [];
-
     const prompt = getCombatRoundActionsPrompt(battle, playerAction);
-
+    console.log("DEBUG: Prompt for LLM generated character actions:", JSON.stringify(prompt, null, 2));
+    // Clear the log once the NPC actions Prompt have been generated
+    battle.combatLog = [];
     let npcActions: CombatAction[] = [];
 
     try {
       const TempCombatRoundActionsResponseSchema = z.object({
         actions: CombatRoundActionsSchema,
       });
-
+      // Call the getObject to generate NPC actions JSON for this round
       const combatRoundResponse = await this.appBackend.getObject(prompt, TempCombatRoundActionsResponseSchema);
       npcActions = combatRoundResponse.actions as CombatAction[];
-      console.log("NPC Actions:", npcActions);
+      //console.log("DEBUG: NPC Actions from LLM:", npcActions);
 
     } catch (error) {
-      console.error("Error getting NPC actions from LLM, using fallback:", error);
-      
-      // Fallback logic: If the LLM fails, generate a basic attack for each active NPC.
-      const activeNpcs = battle.combatants.filter(c => !c.isFriendly && canCombatantAct(c.status));
-      const potentialTargets = battle.combatants.filter(c => c.isFriendly && canCombatantAct(c.status));
+      console.error("Error getting NPC actions from LLM, using fallback for all NPCs:", error);
+      npcActions = []; // clear any partial actions
+    }
 
-      if (potentialTargets.length > 0) {
-        for (const npc of activeNpcs) {
-          const target = potentialTargets[Math.floor(Math.random() * potentialTargets.length)];
-          const fallbackAction: CombatAction = {
-            actorId: npc.id,
-            actionType: "Attack",
-            targetId: target.id,
-            description: `${npc.id} attacks ${target.id}.`
-          };
-          npcActions.push(fallbackAction);
+    // Fallback logic for any NPC that doesn't have an action from the LLM
+    // TODO: Improve fallback logic to be more than just attack, and consider NPC personalities (isFriendly, etc), this list can validate the LLM decisions
+    // Also consider adding "Defend" or "Wait" actions for friendlies if no enemies are available
+    // Also consider adding "Heal" actions for friendlies if they have healing abilities and an ally is injured
+    // Also consider adding "CastSpell" actions for NPCs with spellcasting abilities
+    // Also consider adding "UseItem" actions for NPCs with items in their inventory
+    // Also consider adding "Flee" actions for NPCs that are low on HP or outnumbered
+    // Also consider adding "SpecialAbility" actions for NPCs with unique abilities or traits
+    // Also need to check what happens if the action is not valid (e.g., target is already defeated)
+    // Also need to check if the combatant can actually perform the action (e.g., has enough resources, is not stunned, etc)
+    // Also need to consider the action economy (e.g., bonus actions, reactions, etc)
+    const activeNonPlayerCombatants = battle.combatants.filter(c => c.characterIndex !== -1 && canCombatantAct(c.status));
+    const npcsWithActions = npcActions.map(a => a.actorId);
+
+    for (const combatant of activeNonPlayerCombatants) {
+        if (!npcsWithActions.includes(combatant.id)) {
+            console.log(`Generating fallback action for ${combatant.id} who was missed by the LLM.`);
+            if (combatant.isFriendly) {
+                const enemyTargets = battle.combatants.filter(c => !c.isFriendly && canCombatantAct(c.status));
+                if (enemyTargets.length > 0) {
+                    const target = enemyTargets[Math.floor(Math.random() * enemyTargets.length)];
+                    const fallbackAction: CombatAction = {
+                        actorId: combatant.id,
+                        actionType: "Attack",
+                        targetId: target.id,
+                        description: `${combatant.id} attacks ${target.id}.`
+                    };
+                    npcActions.push(fallbackAction);
+                }
+            } else { // is an enemy
+                const potentialTargets = battle.combatants.filter(c => c.isFriendly && canCombatantAct(c.status));
+                if (potentialTargets.length > 0) {
+                    const target = potentialTargets[Math.floor(Math.random() * potentialTargets.length)];
+                    const fallbackAction: CombatAction = {
+                        actorId: combatant.id,
+                        actionType: "Attack",
+                        targetId: target.id,
+                        description: `${combatant.id} attacks ${target.id}.`
+                    };
+                    npcActions.push(fallbackAction);
+                }
+            }
         }
-      }
     }
 
     // Combine player and NPC actions and sort them by initiative roll (descending).
@@ -576,7 +604,7 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
 
     if (playerCombatant && canCombatantAct(playerCombatant.status)) {
         // Create a combat action object for the player.
-        // Note: This is a simplified representation. A more robust solution would parse the playerAction string.
+        // TODO: This is a simplified representation. A more robust solution would parse the playerAction string using similar function const combatRoundResponse = await this.appBackend.getObject(prompt, TempCombatRoundActionsResponseSchema);.
         const playerActionObject: CombatAction = {
             actorId: playerCombatant.id,
             actionType: "Attack", // Assuming player always attacks for now.
@@ -594,33 +622,40 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
     });
 
     allActions.sort((a, b) => b.initiative - a.initiative);
-
+    console.log("DEBUG: All Actions in Initiative Order:", allActions);
     // Process all actions in initiative order.
     for (const action of allActions) {
         const combatant = battle.combatants.find(c => c.id === action.actorId);
         if (combatant && canCombatantAct(combatant.status)) {
-            this.resolveCombatAction(action);
+            this.resolveCombatAction(action, context);
         }
     }
 
     // Check for combat end conditions.
+    // TODO: if player is unconscious, allow for revival actions by friendlies before ending combat, but player cannot act until revived.
+    // TODO: Player actions will need to be adjusted according to the status of the player combatant.
     const remainingEnemies = battle.combatants.filter(c => !c.isFriendly && canCombatantAct(c.status));
     const remainingFriendlies = battle.combatants.filter(c => c.isFriendly && canCombatantAct(c.status));
 
     if (remainingEnemies.length === 0) {
+      console.log("DEBUG: COMBAT ENDED - VICTORY");
       battle.combatLog.push("All enemies have been defeated! Combat is over.");
       this.settings.plotType = "general";
       this.settings.encounter = undefined;
     } else if (remainingFriendlies.length === 0) {
+        console.log("DEBUG: COMBAT ENDED - DEFEAT");
         battle.combatLog.push("All friendly characters have been defeated! Combat is over.");
         this.settings.plotType = "general";
         this.settings.encounter = undefined;
     } else {
         // If combat continues, increment the round number.
+        console.log('DEBUG: Enemies remaining: ', remainingEnemies.length, ' | Friendlies remaining: ', remainingFriendlies.length);
+        battle.combatLog.push("Battle is still ongoing... preparing for next round in this same location!");
         battle.roundNumber++;
     }
 
     // Generate and return the final narrative summary for the round.
+    console.log("DEBUG: COMBAT LOG:", battle.combatLog);
     const narrationPrompt = getCombatRoundNarrationPrompt(battle.combatLog);
     const roundNarration = await this.appBackend.getNarration(narrationPrompt);
     return roundNarration;
@@ -634,7 +669,7 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
    * and checks if the target is defeated. For other actions, it logs a descriptive message.
    * @param {CombatAction} action - The combat action to resolve.
    */
-  private resolveCombatAction(action: CombatAction): void {
+  private resolveCombatAction(action: CombatAction, context: WritableDraft<State>): void {
     // Ensure all necessary components are available before proceeding.
     if (!this.settings || !this.settings.encounter || !this.appLibs || !this.appStateManager) {
       console.error("Cannot resolve combat action: missing settings, encounter, appLibs, or appStateManager.");
@@ -660,11 +695,10 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
                 return;
             }
 
-            const globalState = this.appStateManager.getGlobalState();
-            // Retrieve the full character data for the attacker from the global state.
+            // Retrieve the full character data for the attacker from the provided context.
             const attackerCharacter = attacker.characterIndex === -1
-                ? globalState.protagonist
-                : globalState.characters[attacker.characterIndex];
+                ? context.protagonist
+                : context.characters[attacker.characterIndex];
 
             if (!attackerCharacter) {
                 battle.combatLog.push(`Character data for ${attacker.id} not found.`);
@@ -693,14 +727,13 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
                     battle.combatLog.push(`${target.id} has been defeated.`);
                     
                     // If the defeated character is a globally managed one, update its state.
-                    if (target.characterIndex !== -1 && globalState.characters[target.characterIndex]) {
-                        this.appStateManager.setGlobalState(async (state) => {
-                            const character = state.characters[target.characterIndex];
-                            // Append a note to the character's biography to indicate they were defeated.
-                            if(character) {
-                              character.biography += '\n(DEFEATED IN COMBAT)';
-                            }
-                        });
+                    if (target.characterIndex !== -1 && context.characters[target.characterIndex]) {
+                        // Directly modify the character in the current context draft
+                        const character = context.characters[target.characterIndex];
+                        // Append a note to the character's biography to indicate they were defeated.
+                        if(character) {
+                          character.biography += '\n(DEFEATED IN COMBAT)';
+                        }
                     }
                 }
             }
@@ -754,22 +787,24 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
 
     // Example: If "initiative_triggered" event, set plotType to combat and initialize encounter
     if (eventType === "initiative_triggered" && PCStats.plotType !== "combat") {
+      console.log("DEBUG: COMBAT STARTED");
       PCStats.plotType = "combat";
 
-      // Define schema for LLM response about combatants
+      // Define the new, more detailed schema for the LLM's response.
       const CombatantsLLMSchema = z.object({
-        friendlyCharacters: z.array(z.object({
+        knownCharacters: z.array(z.object({
           name: z.string(),
-          currentHp: z.number().int().min(1),
-          maxHp: z.number().int().min(1),
-        })),
-        namedEnemies: z.array(z.object({
+          isFriendly: z.boolean(),
+        })).optional(),
+        newNamedCharacters: z.array(z.object({
           name: z.string(),
-          currentHp: z.number().int().min(1),
-          maxHp: z.number().int().min(1),
-        })),
-        unnamedEnemiesCount: z.number().int().min(0),
-        unnamedEnemiesDefaultHp: z.number().int().min(1).optional(), // New: Default HP for unnamed enemies
+          isFriendly: z.boolean(),
+          description: z.string(),
+        })).optional(),
+        unnamedEnemies: z.object({
+          count: z.number().int().min(0),
+          type: z.string(),
+        }).optional(),
         encounterDescription: z.string().optional(),
       });
 
@@ -785,9 +820,9 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
         }
       }
 
-      const combatantsPrompt = getCombatantsPrompt(sceneNarration, context.protagonist.name || "");
-
-      // Make LLM call
+      // Gather all known character names to provide context to the LLM to determine each character's action.
+      const knownCharacterNames = context.characters.map(c => c.name);
+      const combatantsPrompt = getCombatantsPrompt(sceneNarration, context.protagonist.name || "", knownCharacterNames);
       const combatantsLLMResponse = await this.appBackend.getObject(combatantsPrompt, CombatantsLLMSchema);
 
       const allCombatants: Combatant[] = [];
@@ -807,71 +842,81 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
         });
       }
 
-      // Populate friendly characters from LLM response
-      for (const char of combatantsLLMResponse.friendlyCharacters) {
-        // Skip if this character is the protagonist (by name), as they are already added
-        if (context.protagonist && char.name === context.protagonist.name) {
-          continue;
+      // Process known characters from the LLM response
+      // TODO: Get LLM to provide race, gender, HD, description
+      // TODO: create a permanent stat block for known characters in the global state for future encounters
+      if (combatantsLLMResponse.knownCharacters) {
+        for (const char of combatantsLLMResponse.knownCharacters) {
+          if (context.protagonist && char.name === context.protagonist.name) {
+            continue; // Skip protagonist, already added
+          }
+          const charIndex = context.characters.findIndex(c => c.name === char.name);
+          if (charIndex !== -1) {
+            const initiativeRoll = new rpgDiceRoller.DiceRoll(`1d20`);
+            allCombatants.push({
+              id: char.name,
+              characterIndex: charIndex,
+              currentHp: 24, // Placeholder HP, ideally get from character state
+              maxHp: 24, // Placeholder HP
+              status: "active",
+              initiativeRoll: initiativeRoll.total,
+              isFriendly: char.isFriendly,
+            });
+          }
         }
-
-        let charIndex = context.characters.findIndex(c => c.name === char.name);
-        if (charIndex === -1 || charIndex === undefined) { // If character not found in context.characters, add it
-          charIndex = context.characters.length || 0;
-          context.characters.push({ ...char, gender: "male", race: "human", biography: "", locationIndex: 0 }); // Placeholder for missing Character properties, to-do: get LLM's description to make the call on what to put here
-        }
-        const initiativeRoll = new rpgDiceRoller.DiceRoll(`1d20`);
-        allCombatants.push({
-          id: char.name,
-          characterIndex: charIndex,
-          currentHp: char.currentHp, // Use HP from LLM
-          maxHp: char.maxHp, // Use HP from LLM
-          status: "active",
-          initiativeRoll: initiativeRoll.total,
-          isFriendly: true,
-        });
       }
 
-      // Populate named enemies
-      for (const char of combatantsLLMResponse.namedEnemies) {
-        let charIndex = context.characters.findIndex(c => c.name === char.name);
-        if (charIndex === -1 || charIndex === undefined) {
-          charIndex = context.characters.length || 0;
-          context.characters.push({ ...char, gender: "male", race: "human", biography: "", locationIndex: 0 }); // Placeholder for missing Character properties
+      //Process and create new named characters
+      // TODO: Get LLM to provide race, gender, HD, description      
+      if (combatantsLLMResponse.newNamedCharacters) {
+        for (const char of combatantsLLMResponse.newNamedCharacters) {
+          const newChar: Character = {
+            name: char.name,
+            biography: char.description,
+            gender: "male", // Placeholder
+            race: "human", // Placeholder
+            locationIndex: context.protagonist.locationIndex, // Assume same location
+          };
+          context.characters.push(newChar);
+          const charIndex = context.characters.length - 1;
+          const initiativeRoll = new rpgDiceRoller.DiceRoll(`1d20`);
+          allCombatants.push({
+            id: char.name,
+            characterIndex: charIndex,
+            currentHp: 24, // Placeholder HP
+            maxHp: 24, // Placeholder HP
+            status: "active",
+            initiativeRoll: initiativeRoll.total,
+            isFriendly: char.isFriendly,
+          });
         }
-        const initiativeRoll = new rpgDiceRoller.DiceRoll(`1d20`);
-        allCombatants.push({
-          id: char.name,
-          characterIndex: charIndex,
-          currentHp: char.currentHp, // Use HP from LLM
-          maxHp: char.maxHp, // Use HP from LLM
-          status: "active",
-          initiativeRoll: initiativeRoll.total,
-          isFriendly: false,
-        });
       }
 
-      // Populate unnamed enemies
-      for (let i = 0; i < combatantsLLMResponse.unnamedEnemiesCount; i++) {
-        const enemyName = `Unnamed Enemy ${i + 1}`; // Simple naming convention
-        const enemyChar: Character = {
-          name: enemyName,
-          gender: "male", // Placeholder
-          race: "human", // Placeholder
-          biography: "A generic enemy.", // Placeholder
-          locationIndex: 0, // Placeholder
-        };
-        let charIndex = context.characters.length || 0;
-        context.characters.push(enemyChar);
-        const initiativeRoll = new rpgDiceRoller.DiceRoll(`1d20`);
-        allCombatants.push({
-          id: enemyName,
-          characterIndex: charIndex,
-          currentHp: 20, // Placeholder HP
-          maxHp: 20, // Placeholder HP
-          status: "active",
-          initiativeRoll: initiativeRoll.total,
-          isFriendly: false,
-        });
+      // Process and create unnamed enemies
+      // TODO: Get LLM to provide race, gender, HD, description
+      if (combatantsLLMResponse.unnamedEnemies && combatantsLLMResponse.unnamedEnemies.count > 0) {
+        for (let i = 0; i < combatantsLLMResponse.unnamedEnemies.count; i++) {
+          const enemyName = `${combatantsLLMResponse.unnamedEnemies.type} ${i + 1}`;
+          const enemyChar: Character = {
+            name: enemyName,
+            gender: "male",
+            race: "monster",
+            biography: `A generic ${combatantsLLMResponse.unnamedEnemies.type}.`,
+            locationIndex: context.protagonist.locationIndex,
+          };
+          context.characters.push(enemyChar);
+          const charIndex = context.characters.length - 1;
+          const initiativeRoll = new rpgDiceRoller.DiceRoll(`1d20`);
+          allCombatants.push({
+            id: enemyName,
+            characterIndex: charIndex,
+            currentHp: 8, // Placeholder HP
+            maxHp: 8, // Placeholder HP
+            status: "active",
+            initiativeRoll: initiativeRoll.total,
+            isFriendly: false,
+          });
+        }
       }
 
       // Sort combatants by initiative (descending)
@@ -880,8 +925,10 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
       PCStats.encounter = {
         roundNumber: 1,
         combatants: allCombatants,
-        combatLog: ["Combat initiated."], //to-do: put actual logic in here to log actions and increase round number
+        combatLog: ["Combat initiated."],
       };
+
+      console.log("DEBUG: Characters at end of handleConsequence:", JSON.stringify(context.characters, null, 2));
     }
   }
 
@@ -891,18 +938,47 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
    * @returns {Promise<string[]>} A promise that resolves to an array of action strings.
    */
   async getActions(): Promise<string[]> {
-    if (!this.settings) {
-      console.error("Settings not available for getActions.");
+    if (!this.settings || !this.appBackend || !this.appStateManager) {
+      console.error("Settings, backend, or state manager not available for getActions.");
       return [];
     }
 
-    const PCStats = this.settings as DnDStats;
+    // If combat is properly initiated, return combat actions.
+    if (this.settings.plotType === "combat" && this.settings.encounter) {
+      return ["Attack", "Defend", "Cast Spell", "Use Item", "Flee"];
+    }
 
-    if (PCStats.plotType === "combat") {
-      // Return combat-specific actions
+    const latestNarrationEvent = [...this.appStateManager.getGlobalState().events].reverse().find(event => event.type === "narration");
+    if (latestNarrationEvent && latestNarrationEvent.text) {
+      const plotTypePrompt = assignPlotType(latestNarrationEvent.text, Object.values(PlotType.enum));
+      try {
+        const startTime = Date.now(); // DEBUG: Start timing
+        const llmResponse = await this.appBackend.getNarration(plotTypePrompt);
+        const parsedPlotType = PlotType.parse(llmResponse.trim());
+        const endTime = Date.now(); // DEBUG: End timing
+        const duration = (endTime - startTime) / 1000; // DEBUG: duration in seconds
+        console.log(`DEBUG: @getActions PlotType updated to: ${this.settings.plotType} in ${duration} seconds`);        
+
+        if (parsedPlotType === "combat" && !this.settings.encounter) {
+          console.log("DEBUG: @getActions detected combat, calling setGlobalState to initialize.");          
+          // Call setGlobalState to get a writable draft and then call handleConsequence.
+          await this.appStateManager.setGlobalState(async (draft) => {
+            await this.handleConsequence("initiative_triggered", draft as WritableDraft<State>, [], "Combat started from narration");
+          });
+
+          // After initialization, return combat actions.
+          return ["Attack", "Defend", "Cast Spell", "Use Item", "Flee"];
+        }        
+        this.settings.plotType = parsedPlotType;
+      } catch (error) {
+        console.error("Error assigning plot type:", error);
+      }
+    }
+
+    // Default to general actions if not in combat.
+    if (this.settings.plotType === "combat" && this.settings.encounter) {
       return ["Attack", "Defend", "Cast Spell", "Use Item", "Flee"];
     } else {
-      // Return general actions
       return ["Explore", "Talk", "Rest", "Search", "Use Item", "Examine", "Use non-combat magic", "Use skill"];
     }
   }

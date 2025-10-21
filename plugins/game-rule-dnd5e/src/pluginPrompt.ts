@@ -16,6 +16,7 @@ export function modifyProtagonistPromptForDnd(originalPrompt: Prompt): Prompt {
 
 /**
  * The coreAttributesContent string provides descriptive guidance for D&D 5e attributes.
+ TODO: dynamically send only the relevant parts based on the stats
  */
 const coreAttributesContent = `
 In Dungeons & Dragons 5th Edition, ability scores range from 1 to 10, with 10-11 being the average for a commoner. While the game provides numerical modifiers, a descriptive interpretation helps bring characters to life. Here's a complete example for each main stat, from lowest to highest:
@@ -476,42 +477,60 @@ export function getLocationChangePrompt(
  * @description Constructs a Prompt object for the LLM to identify combat participants.
  * @param sceneNarration - The current scene narration text.
  * @param protagonistName - The name of the protagonist.
+ * @param knownCharacters - A list of all known characters in the world.
  * @returns A Prompt object with system and user messages for identifying combatants.
  */
-export function getCombatantsPrompt(sceneNarration: string, protagonistName: string): Prompt {
+export function getCombatantsPrompt(sceneNarration: string, protagonistName: string, knownCharacters: string[]): Prompt {
   return {
-    system: "You are a helpful DM using D&D 5th Edition rules in the narrative style of famous DM Matt Mercer.",
-    user: `Based on the following scene narration, identify the combat participants: 
-    
-    Scene: ${sceneNarration} 
-    Protagonist: ${protagonistName} 
-    
-    Provide a JSON object with the following structure:
-    { "friendlyCharacters": [
-    { "name": "Protagonist's Name" },
-    { "name": "Ally 1 Name" }
-    ],
-      "namedEnemies": [
-    { "name": "Enemy 1 Name" },
-    { "name": "Enemy 2 Name" }
-    ],
-      "unnamedEnemiesCount": 0,
-      "encounterDescription": "A brief description of the combat encounter."
-    }`,
+    system: "You are a helpful DM using D&D 5th Edition rules in the narrative style of famous DM Matt Mercer. Your task is to identify all combatants in a scene and categorize them.",
+    user: `Based on the following scene narration, identify all combat participants. 
+
+    Scene: "${sceneNarration}"
+    Protagonist: "${protagonistName}"
+    Known Characters in the world: [${knownCharacters.join(", ")}]
+
+    Categorize the combatants into a JSON object with the following structure:
+    {
+      "knownCharacters": [
+        { "name": "Character Name from Known List", "isFriendly": true/false }
+      ],
+      "newNamedCharacters": [
+        { "name": "New Villain Name", "isFriendly": false, "description": "A brief description of their appearance." }
+      ],
+      "unnamedEnemies": {
+        "count": 2,
+        "type": "Monster Type from Narration"
+      },
+      "encounterDescription": "A brief, narrative description of how the combat starts."
+    }
+
+    - If a character from the scene is in the 'Known Characters' list, add them to the 'knownCharacters' array.
+    - If a character is named in the scene but NOT in the 'Known Characters' list, add them to the 'newNamedCharacters' array.
+    - For generic enemies (e.g., 'goblins', 'assassins'), use the 'unnamedEnemies' object.
+    - For 'unnamedEnemies', the 'type' field MUST be the type of monster described in the scene narration (e.g., "Orc", "Wolf", "Bandit").
+    - The protagonist, "${protagonistName}", should always be included in the 'knownCharacters' array as friendly.`,
   };
 }
 
 export function getCombatRoundActionsPrompt(battle: Battle, playerAction: string): Prompt {
-  const combatantStates = battle.combatants.map(c => `  - ${c.id} (Status: ${c.status}, HP: ${c.currentHp}/${c.maxHp})`).join('\n');
+  const combatantStates = battle.combatants.map(c => `  - ${c.id} (Status: ${c.status}, HP: ${c.currentHp}/${c.maxHp}, Friendly: ${c.isFriendly})`).join('\n');
+  console.log("DEBUG: Combatant States sent to Combat Action LLM:\n", combatantStates);
 
   const jsonSchema = {
     "$schema": "http://json-schema.org/draft-07/schema#",
-    "title": "Combat Round Actions",
-    "description": "An array of actions to be performed by combatants in a single round.",
-    "type": "array",
-    "items": {
-      "$ref": "#/definitions/CombatAction"
+    "title": "Combat Round Actions Response",
+    "description": "A response object containing an array of actions.",
+    "type": "object",
+    "properties": {
+      "actions": {
+        "type": "array",
+        "description": "An array of actions to be performed by combatants in a single round.",
+        "items": {
+          "$ref": "#/definitions/CombatAction"
+        }
+      }
     },
+    "required": ["actions"],
     "definitions": {
       "CombatAction": {
         "type": "object",
@@ -525,11 +544,11 @@ export function getCombatRoundActionsPrompt(battle: Battle, playerAction: string
           "actionType": {
             "type": "string",
             "description": "The type of action being performed.",
-            "enum": ["Attack", "CastSpell", "Dash", "Dodge", "Disengage", "Help", "Hide", "Ready", "Search", "UseObject"]
+            "enum": ["Attack", "CastSpell", "Dash", "Dodge", "Disengage", "Help", "Hide", "Ready", "Search", "UseObject", "Move", "Other"]
           },
           "targetId": {
             "type": "string",
-            "description": "The unique name of the target combatant. Optional."
+            "description": "The unique name of the target combatant. This is REQUIRED for actions like 'Attack', 'CastSpell', and 'Help'."
           },
           "description": {
             "type": "string",
@@ -542,16 +561,38 @@ export function getCombatRoundActionsPrompt(battle: Battle, playerAction: string
   };
 
   return {
-    system: `You are a helpful DM using D&D 5th Edition rules. Your task is to determine the actions for all non-player combatants for the current round of combat based on the provided battle state. You must respond with a valid JSON object that conforms to the provided schema.`, 
-    user: `We are in round ${battle.roundNumber} of combat. The player has declared the following action: "${playerAction}".
-    The current state of all combatants is:
-    ${combatantStates}
+    system: `You are a helpful DM using D&D 5th Edition rules. Your task is to determine the actions for all non-player combatants for the current round of combat based on the provided battle state. You must respond with a valid JSON object that conforms to the provided schema.
 
+    **Strict Targeting Rules (Non-negotiable):**
+    - An 'Attack' action from a friendly combatant (Friendly: true) MUST target an enemy combatant (Friendly: false).
+    - An 'Attack' action from an enemy combatant (Friendly: false) MUST target a friendly combatant (Friendly: true).
+    - Healing or 'Help' actions from a friendly combatant (isFriendly: true) MUST target another friendly combatant (isFriendly: true).
+    - Under no circumstances should a combatant target a member of its own side with a harmful action.
+
+    **Core Combat Strategies:**
+
+    **Friendly Combatant Strategy (Collective Survival):**
+    Your primary goal is to ensure the party survives. Allies should act as a coordinated team.
+    - **Prioritize Preservation:** If a friendly combatant has low HP (less than 25% of their max HP) or is 'unconscious', other friendly units with healing abilities (spells, potions) MUST prioritize healing or stabilizing them.
+    - **Teamwork:** Friendly combatants should use the 'Help' action to grant advantage to a powerful ally's attack against a key enemy.
+    - **Protect the Vulnerable:** Characters with defensive abilities should use them to protect allies who are low on health or are concentrating on important spells.
+
+    **Enemy Combatant Strategy (Strategic Elimination):**
+    Enemies fight to win and will use cunning tactics. They are not mindless and will coordinate.
+    - **Focus Fire:** Enemy units MUST coordinate their attacks on a single high-priority player target until that target is neutralized (unconscious or dead).
+    - **Identify Threats:** A high-priority target is typically the character who has dealt the most damage (check the combat log), is a known healer, or has the lowest remaining HP.
+    - **Leader Directives:** If an intelligent leader (e.g., a Hobgoblin Captain) is present, their actions should reflect directing their minions to focus fire on the chosen target.
+    - **Avoid Unfavorable Fights:** Weaker enemies (e.g., Goblins) should avoid engaging powerful player characters in one-on-one combat. They should swarm a single target or attack from a distance if possible.`,
+    user: `We are in round ${battle.roundNumber} of combat. The player has declared the following action: "${playerAction}".
     The previous combat log is:
     ${battle.combatLog.join('\n')}
-
-    Based on this information, decide the action for every *other* active combatant. An active combatant has the status "active".
-    Your response MUST be a JSON array of "CombatAction" objects, conforming to this schema:
+    Based on this information, decide the action for each combatant (both friendly and enemies). An active combatant has the status "active".
+    For any action that targets another combatant (like 'Attack' or 'Help'), you MUST include the 'targetId' field, using the exact ID from the list of combatants.
+    
+    Decide the best action for each of the following combatants ONCE:
+    ${combatantStates}
+    
+    Your response MUST be a JSON object with a single key "actions" which contains an array of "CombatAction" objects, conforming to this schema:
     ${JSON.stringify(jsonSchema, null, 2)}`,
   };
 }
@@ -576,4 +617,18 @@ export function getCombatRoundNarrationPrompt(combatLog: string[]): Prompt {
     Focus on vivid descriptions and the flow of battle. Do not break it into separate lines or bullet points.
     Your entire response must be a single paragraph.`,
  };
+}
+
+/**
+ * @function assignPlotType
+ * @description Generates a prompt to classify the narration into a specific PlotType.
+ * @param {string} narrationText - The text of the most recent narration.
+ * @param {string[]} plotTypes - An array of possible plot types.
+ * @returns {Prompt} A prompt for the LLM to classify the scene.
+ */
+export function assignPlotType(narrationText: string, plotTypes: string[]): Prompt {
+  return {
+    system: `You are a game state analyzer. Your only task is to analyze the provided narration and classify it into the most fitting category from the given list. The categories are: ${plotTypes.join(", ")}.`,
+    user: `Based on the following narration, choose the single most appropriate plot type from the list below.\n- combat: An immediate physical conflict is starting or ongoing.\n- chase: The protagonist is actively pursuing or being pursued by someone.\n- puzzle: The scene presents a riddle, a complex mechanism, or a problem requiring clever thinking.\n- roleplay: The focus is on dialogue, social interaction, and character development.\n- shop: The protagonist is in a place of commerce with the primary intent to buy or sell goods.\n- general: None of the other categories fit well. This is for standard exploration, travel, or transitional narration.\n\nNarration: """${narrationText}"""\n\nReturn only the single best-fitting plot type from the list, and nothing else.`,
+  };
 }
