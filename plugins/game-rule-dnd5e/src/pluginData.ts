@@ -29,16 +29,20 @@ export const CombatActionSchema = z.object({
   actionType: z.enum(["Attack", "CastSpell", "Dash", "Dodge", "Disengage", "Help", "Hide", "Ready", "Search", "UseObject", "Move", "Other"]),
   targetId: z.string().optional(),
   description: z.string(),
+  spellName: z.enum(["healing word", "cure wounds", "magic missile", "fireball"]).optional(), // Added spellName
   //Include TargetId only for actions that require a target
 }).refine(data => {
   if (["Attack", "CastSpell", "Help", "UseObject"].includes(data.actionType)) {
     return data.targetId !== undefined;
   }
+  // Add refinement for spellName if actionType is CastSpell
+  if (data.actionType === "CastSpell") {
+    return data.spellName !== undefined;
+  }
   return true;
 }, {
-  message: "targetId is required for Attack, CastSpell, Help, and UseObject action types",
+  message: "targetId is required for Attack, CastSpell, Help, and UseObject action types, and spellName is required for CastSpell",
   path: ["targetId"],
-  //End of refine
 });
 export type CombatAction = z.infer<typeof CombatActionSchema>;
 

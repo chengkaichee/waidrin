@@ -512,8 +512,17 @@ export function getCombatantsPrompt(sceneNarration: string, protagonistName: str
   };
 }
 
-export function getCombatRoundActionsPrompt(battle: Battle, playerAction: string): Prompt {
-  const combatantStates = battle.combatants.map(c => `  - ${c.id} (Status: ${c.status}, HP: ${c.currentHp}/${c.maxHp}, Friendly: ${c.isFriendly})`).join('\n');
+export function getCombatRoundActionsPrompt(battle: Battle, playerAction: string, protagonistName: string): Prompt {
+  let pcDownWarning = "";
+  const combatantStates = battle.combatants.map(c => {
+    if (c.id === protagonistName && c.currentHp <= 0) {
+      if (c.status !== "dead") {
+        pcDownWarning = `The protagonist (${c.id}) is incapacitated (HP at 0 or less). Friendly combatants MUST prioritize using 'Help' actions or healing spells/items on the protagonist. The protagonist CANNOT perform any offensive actions.`;
+        return `  - ${c.id} (Status: unconscious, HP: ${c.currentHp}/${c.maxHp}, Friendly: ${c.isFriendly})`;
+      }
+    }
+    return `  - ${c.id} (Status: ${c.status}, HP: ${c.currentHp}/${c.maxHp}, Friendly: ${c.isFriendly})`;
+  }).join('\n');
   console.log("DEBUG: Combatant States sent to Combat Action LLM:\n", combatantStates);
 
   const jsonSchema = {
@@ -553,6 +562,11 @@ export function getCombatRoundActionsPrompt(battle: Battle, playerAction: string
           "description": {
             "type": "string",
             "description": "A brief narrative description of the action."
+          },
+          "spellName": {
+            "type": "string",
+            "description": "The name of the spell being cast, if actionType is 'CastSpell'.",
+            "enum": ["healing word", "cure wounds", "magic missile", "fireball"]
           }
         },
         "required": ["actorId", "actionType", "description"]
@@ -561,8 +575,11 @@ export function getCombatRoundActionsPrompt(battle: Battle, playerAction: string
   };
 
   return {
-    system: `You are a helpful DM using D&D 5th Edition rules. Your task is to determine the actions for all non-player combatants for the current round of combat based on the provided battle state. You must respond with a valid JSON object that conforms to the provided schema.
+    system: `You are a helpful DM using D&D 5th Edition rules. 
+    Your task is to determine the actions for all non-player combatants for the current round of combat based on the provided battle state. 
+    You must respond with a valid JSON object that conforms to the provided schema.
 
+    ${pcDownWarning} 
     **Strict Targeting Rules (Non-negotiable):**
     - An 'Attack' action from a friendly combatant (Friendly: true) MUST target an enemy combatant (Friendly: false).
     - An 'Attack' action from an enemy combatant (Friendly: false) MUST target a friendly combatant (Friendly: true).
@@ -573,7 +590,7 @@ export function getCombatRoundActionsPrompt(battle: Battle, playerAction: string
 
     **Friendly Combatant Strategy (Collective Survival):**
     Your primary goal is to ensure the party survives. Allies should act as a coordinated team.
-    - **Prioritize Preservation:** If a friendly combatant has low HP (less than 25% of their max HP) or is 'unconscious', other friendly units with healing abilities (spells, potions) MUST prioritize healing or stabilizing them.
+    - **Prioritize Preservation:** If a friendly combatant has low HP (less than 25% of their max HP) or is 'unconscious', other friendly units with healing spells or potions MUST prioritize healing or stabilizing them.
     - **Teamwork:** Friendly combatants should use the 'Help' action to grant advantage to a powerful ally's attack against a key enemy.
     - **Protect the Vulnerable:** Characters with defensive abilities should use them to protect allies who are low on health or are concentrating on important spells.
 
@@ -587,8 +604,19 @@ export function getCombatRoundActionsPrompt(battle: Battle, playerAction: string
     The previous combat log is:
     ${battle.combatLog.join('\n')}
     Based on this information, decide the action for each combatant (both friendly and enemies). An active combatant has the status "active".
-    For any action that targets another combatant (like 'Attack' or 'Help'), you MUST include the 'targetId' field, using the exact ID from the list of combatants.
+    If the player is casting a spell (by saying cast spell name) you MUST provide both a 'targetId' and a 'spellName'.
+    The 'spellName' must be map to the closest one of the following: "healing word", "cure wounds", "magic missile", "fireball".
+    For 'CastSpell' actions, the 'description' field should be a brief description of the spell being cast.
+    For any action that targets another combatant (like 'Attack', 'CastSpell', 'Help', or 'UseObject'), you MUST include the 'targetId' field, using the exact ID from the list of combatants.
     
+    Example of a Spell action:
+    {
+      "actorId": "Elara",
+      "actionType": "CastSpell",
+      "targetId": "Goblin 1",
+      "description": "Summons enegry bolts shoot towards Goblin 1",
+      "spellName": "magic missile"
+    }
     Decide the best action for each of the following combatants ONCE:
     ${combatantStates}
     

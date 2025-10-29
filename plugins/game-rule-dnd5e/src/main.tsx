@@ -18,6 +18,7 @@ import type * as RadixThemes from '@radix-ui/themes';
 import type { useShallow } from 'zustand/shallow';
 import { DnDStats, generateDefaultDnDStats, DnDClassData, DnDStatsSchema, resolveCheck as getResolveCheck, Combatant, canCombatantAct, CombatAction, CombatRoundActionsSchema, CheckResult, PlotType } from "./pluginData";
 import { getBackstory, modifyProtagonistPromptForDnd, getChecksPrompt, getConsequenceGuidancePrompt, getDndNarrationGuidance, getLocationChangePrompt, getCombatantsPrompt, getCombatRoundActionsPrompt, getCombatRoundNarrationPrompt, assignPlotType } from "./pluginPrompt";
+import { resolveSpell } from "./pluginSpells";
 import * as z from "zod/v4";
 
 import type { Character, State, CheckResolutionResult } from "@/lib/state"; // Import Character and State
@@ -409,9 +410,13 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
       return [];
     }
 
+    console.log("DEBUG: getNarrativeGuidance - plotType:", this.settings.plotType); // Troubleshoot Combat Narration issues
+    console.log("DEBUG: getNarrativeGuidance - action:", action);                   // Troubleshoot Combat Narration issues
+
     // If in combat and the user provided an action, execute the combat round and generate narration from it.
     if (this.settings.plotType === "combat" && action) {
       const combatNarration = await this.executeCombatRound(action, context);
+      console.log("DEBUG: Combat Narration from executeCombatRound:", combatNarration); // Troubleshoot Combat Narration issues
       const dndStyleGuidance = getDndNarrationGuidance(eventType);
       const consolidatedGuidance = `${dndStyleGuidance}\n\n${combatNarration}`;
       return [consolidatedGuidance];
@@ -533,8 +538,8 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
     }
 
     const battle = this.settings.encounter;
-    const prompt = getCombatRoundActionsPrompt(battle, playerAction);
-    console.log("DEBUG: Prompt for LLM generated character actions:", JSON.stringify(prompt, null, 2));
+    const prompt = getCombatRoundActionsPrompt(battle, playerAction, context.protagonist.name);
+    // console.log("DEBUG: Prompt for LLM generated character actions:", JSON.stringify(prompt, null, 2));
     // Clear the log once the NPC actions Prompt have been generated
     battle.combatLog = [];
     let npcActions: CombatAction[] = [];
@@ -550,6 +555,11 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
 
     } catch (error) {
       console.error("Error getting NPC actions from LLM, using fallback for all NPCs:", error);
+      if (error instanceof z.ZodError) {
+        console.error("DEBUG: Zod validation issues:", JSON.stringify(error.issues, null, 2));
+      } else {
+        console.error("DEBUG: Raw error from appBackend.getObject:", error);
+      }
       npcActions = []; // clear any partial actions
     }
 
@@ -604,7 +614,8 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
 
     if (playerCombatant && canCombatantAct(playerCombatant.status)) {
         // Create a combat action object for the player.
-        // TODO: This is a simplified representation. A more robust solution would parse the playerAction string using similar function const combatRoundResponse = await this.appBackend.getObject(prompt, TempCombatRoundActionsResponseSchema);.
+        // TODO: This is a simplified representation. A more robust solution would parse the playerAction string using similar function 
+        // const combatRoundResponse = await this.appBackend.getObject(prompt, TempCombatRoundActionsResponseSchema);.
         const playerActionObject: CombatAction = {
             actorId: playerCombatant.id,
             actionType: "Attack", // Assuming player always attacks for now.
@@ -639,18 +650,18 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
 
     if (remainingEnemies.length === 0) {
       console.log("DEBUG: COMBAT ENDED - VICTORY");
-      battle.combatLog.push("All enemies have been defeated! Combat is over.");
+      battle.combatLog.push("All enemies have been defeated! Victory! Combat is over.");
       this.settings.plotType = "general";
       this.settings.encounter = undefined;
     } else if (remainingFriendlies.length === 0) {
         console.log("DEBUG: COMBAT ENDED - DEFEAT");
-        battle.combatLog.push("All friendly characters have been defeated! Combat is over.");
+        battle.combatLog.push("All friendly characters have been defeated! You died! Game over narrate the end of story.");
         this.settings.plotType = "general";
         this.settings.encounter = undefined;
     } else {
         // If combat continues, increment the round number.
         console.log('DEBUG: Enemies remaining: ', remainingEnemies.length, ' | Friendlies remaining: ', remainingFriendlies.length);
-        battle.combatLog.push("Battle is still ongoing... preparing for next round in this same location!");
+        battle.combatLog.push("The battle is not over yet... preparing for next round remaining in this same location! do not change location.");
         battle.roundNumber++;
     }
 
@@ -709,8 +720,9 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
             const attackCheck: CheckDefinition = { type: 'attack', difficultyClass: 10 };
             // Resolve the attack roll using the helper function.
             const attackResult = getResolveCheck(attackCheck, attackerCharacter, this.settings, this.appLibs.rpgDiceRoller);
-            // Log the result of the attack roll.
-            battle.combatLog.push(attackResult.statement);
+            
+            // Combine action description with attack result statement
+            battle.combatLog.push(`${action.description} ${attackResult.statement}`);
 
             // If the attack is successful, calculate and apply damage.
             if (attackResult.success) {
@@ -719,27 +731,16 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
                 const damage = damageRoll.total;
                 // Apply damage to the target.
                 target.currentHp -= damage;
-                battle.combatLog.push(`${attacker.id} deals ${damage} damage to ${target.id}. ${target.id} has ${target.currentHp} HP remaining.`);
-
-                // Check if the target has been defeated.
-                if (target.currentHp <= 0) {
-                    target.status = 'dead';
-                    battle.combatLog.push(`${target.id} has been defeated.`);
-                    
-                    // If the defeated character is a globally managed one, update its state.
-                    if (target.characterIndex !== -1 && context.characters[target.characterIndex]) {
-                        // Directly modify the character in the current context draft
-                        const character = context.characters[target.characterIndex];
-                        // Append a note to the character's biography to indicate they were defeated.
-                        if(character) {
-                          character.biography += '\n(DEFEATED IN COMBAT)';
-                        }
-                    }
-                }
+                // Calculate percentage of HP lost
+                const percentageLost = Math.round((damage / target.maxHp) * 100);
+                battle.combatLog.push(`${attacker.id} deals ${damage} damage to ${target.id}. Took away ${percentageLost}% of ${target.id}'s life, ${target.id} has ${target.currentHp} HP remaining.`);
             }
             break;
 
         case "CastSpell":
+            resolveSpell(action, battle, this.appLibs, this.settings);
+            break;
+
         case "Help":
         case "UseObject":
             // Actions that typically have a target.
@@ -752,9 +753,22 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
         case "Disengage":
         case "Hide":
         case "Ready":
+            /* TODO: Implement the Ready action based on 5th Edition SRD rules.
+            // 1. Set a Trigger: The user must be able to declare a perceivable circumstance that will trigger the action (e.g., "If the goblin steps next to me").
+            // 2. Choose an Action: The user must be able to choose the action to take when the trigger occurs (e.g., "I will move away") or choose to move up to their speed.
+            // 3. Use Your Reaction: When the trigger occurs, the system must use the character's reaction to perform the chosen action. A character only has one reaction per round.
+            // Readying a Spell:
+            // - If a spell is readied, it is cast on the character's turn, but the energy is held, requiring concentration.
+            // - If concentration is broken before the trigger occurs, the spell slot is wasted.
+            // - The spell must have a casting time of 1 action.            
+            const targetLogWithTarget = action.targetId ? ` on ${action.targetId}` : '';
+            battle.combatLog.push(`${action.actorId} set {trigger condition} and {reaction action}.`);
+            break;
+            */
         case "Search":
         case "Move":
-            // Actions that typically do not have a target.
+            // TODO: Move action will allow a combatant to move up or back in rank, so only enemies within range can be attacked. 
+            // Frontline, middle and rear mechanics where 1 character can block upto 2 enemies from attacking friendlies behind them.
             battle.combatLog.push(`${action.actorId} uses the ${action.actionType} action.`);
             break;
 
@@ -764,6 +778,22 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
             const targetLogDefault = action.targetId ? ` on ${action.targetId}` : '';
             battle.combatLog.push(`${action.actorId} performs an action: ${action.description}${targetLogDefault}.`);
             break;
+    }
+
+    // Check if the target has been defeated.
+    if (target && target.currentHp <= 0) {
+        target.status = 'dead';
+        battle.combatLog.push(`${target.id} has been defeated.`);
+        
+        // If the defeated character is a globally managed one, update its state.
+        if (target.characterIndex !== -1 && context.characters[target.characterIndex]) {
+            // Directly modify the character in the current context draft
+            const character = context.characters[target.characterIndex];
+            // Append a note to the character's biography to indicate they were defeated.
+            if(character) {
+                character.biography += '\n(DEFEATED IN COMBAT)';
+            }
+        }
     }
   }
 

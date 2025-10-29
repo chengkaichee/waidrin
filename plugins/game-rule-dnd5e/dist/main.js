@@ -10428,17 +10428,21 @@ var CombatActionSchema = object({
   actorId: string2(),
   actionType: _enum2(["Attack", "CastSpell", "Dash", "Dodge", "Disengage", "Help", "Hide", "Ready", "Search", "UseObject", "Move", "Other"]),
   targetId: string2().optional(),
-  description: string2()
+  description: string2(),
+  spellName: _enum2(["healing word", "cure wounds", "magic missile", "fireball"]).optional()
+  // Added spellName
   //Include TargetId only for actions that require a target
 }).refine((data) => {
   if (["Attack", "CastSpell", "Help", "UseObject"].includes(data.actionType)) {
     return data.targetId !== void 0;
   }
+  if (data.actionType === "CastSpell") {
+    return data.spellName !== void 0;
+  }
   return true;
 }, {
-  message: "targetId is required for Attack, CastSpell, Help, and UseObject action types",
+  message: "targetId is required for Attack, CastSpell, Help, and UseObject action types, and spellName is required for CastSpell",
   path: ["targetId"]
-  //End of refine
 });
 var CombatRoundActionsSchema = array(CombatActionSchema);
 var DnDStatsSchema = object({
@@ -11199,8 +11203,17 @@ function getCombatantsPrompt(sceneNarration, protagonistName, knownCharacters) {
     - The protagonist, "${protagonistName}", should always be included in the 'knownCharacters' array as friendly.`
   };
 }
-function getCombatRoundActionsPrompt(battle, playerAction) {
-  const combatantStates = battle.combatants.map((c) => `  - ${c.id} (Status: ${c.status}, HP: ${c.currentHp}/${c.maxHp}, Friendly: ${c.isFriendly})`).join("\n");
+function getCombatRoundActionsPrompt(battle, playerAction, protagonistName) {
+  let pcDownWarning = "";
+  const combatantStates = battle.combatants.map((c) => {
+    if (c.id === protagonistName && c.currentHp <= 0) {
+      if (c.status !== "dead") {
+        pcDownWarning = `The protagonist (${c.id}) is incapacitated (HP at 0 or less). Friendly combatants MUST prioritize using 'Help' actions or healing spells/items on the protagonist. The protagonist CANNOT perform any offensive actions.`;
+        return `  - ${c.id} (Status: unconscious, HP: ${c.currentHp}/${c.maxHp}, Friendly: ${c.isFriendly})`;
+      }
+    }
+    return `  - ${c.id} (Status: ${c.status}, HP: ${c.currentHp}/${c.maxHp}, Friendly: ${c.isFriendly})`;
+  }).join("\n");
   console.log("DEBUG: Combatant States sent to Combat Action LLM:\n", combatantStates);
   const jsonSchema = {
     "$schema": "http://json-schema.org/draft-07/schema#",
@@ -11239,6 +11252,11 @@ function getCombatRoundActionsPrompt(battle, playerAction) {
           "description": {
             "type": "string",
             "description": "A brief narrative description of the action."
+          },
+          "spellName": {
+            "type": "string",
+            "description": "The name of the spell being cast, if actionType is 'CastSpell'.",
+            "enum": ["healing word", "cure wounds", "magic missile", "fireball"]
           }
         },
         "required": ["actorId", "actionType", "description"]
@@ -11246,8 +11264,11 @@ function getCombatRoundActionsPrompt(battle, playerAction) {
     }
   };
   return {
-    system: `You are a helpful DM using D&D 5th Edition rules. Your task is to determine the actions for all non-player combatants for the current round of combat based on the provided battle state. You must respond with a valid JSON object that conforms to the provided schema.
+    system: `You are a helpful DM using D&D 5th Edition rules. 
+    Your task is to determine the actions for all non-player combatants for the current round of combat based on the provided battle state. 
+    You must respond with a valid JSON object that conforms to the provided schema.
 
+    ${pcDownWarning} 
     **Strict Targeting Rules (Non-negotiable):**
     - An 'Attack' action from a friendly combatant (Friendly: true) MUST target an enemy combatant (Friendly: false).
     - An 'Attack' action from an enemy combatant (Friendly: false) MUST target a friendly combatant (Friendly: true).
@@ -11258,7 +11279,7 @@ function getCombatRoundActionsPrompt(battle, playerAction) {
 
     **Friendly Combatant Strategy (Collective Survival):**
     Your primary goal is to ensure the party survives. Allies should act as a coordinated team.
-    - **Prioritize Preservation:** If a friendly combatant has low HP (less than 25% of their max HP) or is 'unconscious', other friendly units with healing abilities (spells, potions) MUST prioritize healing or stabilizing them.
+    - **Prioritize Preservation:** If a friendly combatant has low HP (less than 25% of their max HP) or is 'unconscious', other friendly units with healing spells or potions MUST prioritize healing or stabilizing them.
     - **Teamwork:** Friendly combatants should use the 'Help' action to grant advantage to a powerful ally's attack against a key enemy.
     - **Protect the Vulnerable:** Characters with defensive abilities should use them to protect allies who are low on health or are concentrating on important spells.
 
@@ -11272,8 +11293,19 @@ function getCombatRoundActionsPrompt(battle, playerAction) {
     The previous combat log is:
     ${battle.combatLog.join("\n")}
     Based on this information, decide the action for each combatant (both friendly and enemies). An active combatant has the status "active".
-    For any action that targets another combatant (like 'Attack' or 'Help'), you MUST include the 'targetId' field, using the exact ID from the list of combatants.
+    If the player is casting a spell (by saying cast spell name) you MUST provide both a 'targetId' and a 'spellName'.
+    The 'spellName' must be map to the closest one of the following: "healing word", "cure wounds", "magic missile", "fireball".
+    For 'CastSpell' actions, the 'description' field should be a brief description of the spell being cast.
+    For any action that targets another combatant (like 'Attack', 'CastSpell', 'Help', or 'UseObject'), you MUST include the 'targetId' field, using the exact ID from the list of combatants.
     
+    Example of a Spell action:
+    {
+      "actorId": "Elara",
+      "actionType": "CastSpell",
+      "targetId": "Goblin 1",
+      "description": "Summons enegry bolts shoot towards Goblin 1",
+      "spellName": "magic missile"
+    }
     Decide the best action for each of the following combatants ONCE:
     ${combatantStates}
     
@@ -11310,6 +11342,139 @@ Narration: """${narrationText}"""
 
 Return only the single best-fitting plot type from the list, and nothing else.`
   };
+}
+
+// src/pluginSpells.ts
+function resolveSpell(action, battle, appLibs, settings) {
+  const attacker = battle.combatants.find((c) => c.id === action.actorId);
+  if (!attacker) {
+    battle.combatLog.push(`Attacker ${action.actorId} not found for spell casting.`);
+    return;
+  }
+  const target = battle.combatants.find((c) => c.id === action.targetId);
+  if (!target) {
+    battle.combatLog.push(`${attacker.id} casts a spell, but the target is invalid.`);
+    return;
+  }
+  const spell = action.spellName || action.description.toLowerCase();
+  let spellModifier = 0;
+  let canCast = false;
+  let spellCheck = void 0;
+  switch (spell) {
+    case "healing word":
+      if (attacker.characterIndex === -1) {
+        const pcStats = settings;
+        switch (pcStats.dndClass) {
+          case "Bard":
+            canCast = true;
+            spellCheck = "charisma";
+            break;
+          case "Cleric":
+          case "Druid":
+            canCast = true;
+            spellCheck = "wisdom";
+            break;
+        }
+        if (spellCheck) {
+          spellModifier = Math.floor((pcStats[spellCheck] - 10) / 2);
+        }
+      } else {
+      }
+      if (canCast) {
+        const healingRoll = new appLibs.rpgDiceRoller.DiceRoll(`1d4+${spellModifier}`);
+        const healing = healingRoll.total;
+        target.currentHp += healing;
+        if (target.currentHp > target.maxHp) {
+          target.currentHp = target.maxHp;
+        }
+        battle.combatLog.push(`${attacker.id} casts Healing Word on ${target.id}, restoring ${healing} HP. ${target.id} has ${target.currentHp} HP remaining.`);
+      } else {
+        battle.combatLog.push(`${attacker.id} cannot cast Healing Word.`);
+      }
+      break;
+    case "cure wounds":
+      if (attacker.characterIndex === -1) {
+        const pcStats = settings;
+        switch (pcStats.dndClass) {
+          case "Bard":
+          case "Paladin":
+            canCast = true;
+            spellCheck = "charisma";
+            break;
+          case "Cleric":
+          case "Druid":
+          case "Ranger":
+            canCast = true;
+            spellCheck = "wisdom";
+            break;
+        }
+        if (spellCheck) {
+          spellModifier = Math.floor((pcStats[spellCheck] - 10) / 2);
+        }
+      } else {
+      }
+      if (canCast) {
+        const healingRoll = new appLibs.rpgDiceRoller.DiceRoll(`1d8+${spellModifier}`);
+        const healing = healingRoll.total;
+        target.currentHp += healing;
+        if (target.currentHp > target.maxHp) {
+          target.currentHp = target.maxHp;
+        }
+        battle.combatLog.push(`${attacker.id} casts Cure Wounds on ${target.id}, restoring ${healing} HP. ${target.id} has ${target.currentHp} HP remaining.`);
+      } else {
+        battle.combatLog.push(`${attacker.id} cannot cast Cure Wounds.`);
+      }
+      break;
+    case "magic missile":
+      if (attacker.characterIndex === -1) {
+        const pcStats = settings;
+        switch (pcStats.dndClass) {
+          case "Sorcerer":
+          case "Wizard":
+            canCast = true;
+            break;
+        }
+      } else {
+        canCast = true;
+      }
+      if (canCast) {
+        const numberOfMissiles = 3;
+        let totalDamage = 0;
+        for (let i = 0; i < numberOfMissiles; i++) {
+          const missileRoll = new appLibs.rpgDiceRoller.DiceRoll("1d4+1");
+          totalDamage += missileRoll.total;
+        }
+        target.currentHp -= totalDamage;
+        battle.combatLog.push(`${attacker.id} casts Magic Missile on ${target.id}, sending ${numberOfMissiles} darts and dealing a total of ${totalDamage} force damage. ${target.id} has ${target.currentHp} HP remaining.`);
+      } else {
+        battle.combatLog.push(`${attacker.id} cannot cast Magic Missile.`);
+      }
+      break;
+    case "fireball":
+      if (attacker.characterIndex === -1) {
+        const pcStats = settings;
+        switch (pcStats.dndClass) {
+          case "Sorcerer":
+          case "Wizard":
+            canCast = true;
+            break;
+        }
+      } else {
+        canCast = true;
+      }
+      if (canCast) {
+        const fireballRoll = new appLibs.rpgDiceRoller.DiceRoll("8d6");
+        const fireballDamage = fireballRoll.total;
+        target.currentHp -= fireballDamage;
+        battle.combatLog.push(`${attacker.id} casts Fireball on ${target.id}, dealing ${fireballDamage} fire damage. ${target.id} has ${target.currentHp} HP remaining.`);
+      } else {
+        battle.combatLog.push(`${attacker.id} cannot cast Fireball.`);
+      }
+      break;
+    default:
+      battle.combatLog.push(`${attacker.id} tries to cast an unknown spell: ${action.description}.`);
+      break;
+  }
 }
 
 // src/main.tsx
@@ -11434,12 +11599,15 @@ var DndStatsPlugin = class {
    * @param context - The plugin context, providing access to application functionalities.
    */
   async init(settings, context, appLibs, appBackend, appStateManager, appUI) {
+    console.log("DEBUG: DndStatsPlugin.init called.");
     this.context = context;
     this.appLibs = appLibs;
     this.appBackend = appBackend;
     this.appStateManager = appStateManager;
     this.appUI = appUI;
     this.settings = DnDStatsSchema.parse(__spreadValues(__spreadValues({}, generateDefaultDnDStats(appLibs.rpgDiceRoller)), settings));
+    console.log("DEBUG: DndStatsPlugin.init - appBackend set:", !!this.appBackend);
+    console.log("DEBUG: DndStatsPlugin.init - settings set:", !!this.settings);
     React = appLibs.react;
     this.context.addCharacterUI(
       this.context.pluginName,
@@ -11565,6 +11733,8 @@ var DndStatsPlugin = class {
       console.error("Context or settings not available for getNarrativeGuidance.");
       return [];
     }
+    console.log("DEBUG: getNarrativeGuidance - plotType:", this.settings.plotType);
+    console.log("DEBUG: getNarrativeGuidance - action:", action);
     if (this.settings.plotType === "combat" && action) {
       const combatNarration2 = await this.executeCombatRound(action, context);
       const dndStyleGuidance2 = getDndNarrationGuidance(eventType);
@@ -11660,8 +11830,7 @@ ${combatNarration}`;
       return "";
     }
     const battle = this.settings.encounter;
-    const prompt = getCombatRoundActionsPrompt(battle, playerAction);
-    console.log("DEBUG: Prompt for LLM generated character actions:", JSON.stringify(prompt, null, 2));
+    const prompt = getCombatRoundActionsPrompt(battle, playerAction, context.protagonist.name);
     battle.combatLog = [];
     let npcActions = [];
     try {
@@ -11672,6 +11841,11 @@ ${combatNarration}`;
       npcActions = combatRoundResponse.actions;
     } catch (error39) {
       console.error("Error getting NPC actions from LLM, using fallback for all NPCs:", error39);
+      if (error39 instanceof ZodError) {
+        console.error("DEBUG: Zod validation issues:", JSON.stringify(error39.issues, null, 2));
+      } else {
+        console.error("DEBUG: Raw error from appBackend.getObject:", error39);
+      }
       npcActions = [];
     }
     const activeNonPlayerCombatants = battle.combatants.filter((c) => c.characterIndex !== -1 && canCombatantAct(c.status));
@@ -11737,17 +11911,17 @@ ${combatNarration}`;
     const remainingFriendlies = battle.combatants.filter((c) => c.isFriendly && canCombatantAct(c.status));
     if (remainingEnemies.length === 0) {
       console.log("DEBUG: COMBAT ENDED - VICTORY");
-      battle.combatLog.push("All enemies have been defeated! Combat is over.");
+      battle.combatLog.push("All enemies have been defeated! Victory! Combat is over.");
       this.settings.plotType = "general";
       this.settings.encounter = void 0;
     } else if (remainingFriendlies.length === 0) {
       console.log("DEBUG: COMBAT ENDED - DEFEAT");
-      battle.combatLog.push("All friendly characters have been defeated! Combat is over.");
+      battle.combatLog.push("All friendly characters have been defeated! You died! Game over narrate the end of story.");
       this.settings.plotType = "general";
       this.settings.encounter = void 0;
     } else {
       console.log("DEBUG: Enemies remaining: ", remainingEnemies.length, " | Friendlies remaining: ", remainingFriendlies.length);
-      battle.combatLog.push("Battle is still ongoing... preparing for next round in this same location!");
+      battle.combatLog.push("The battle is not over yet... preparing for next round remaining in this same location! do not change location.");
       battle.roundNumber++;
     }
     console.log("DEBUG: COMBAT LOG:", battle.combatLog);
@@ -11788,25 +11962,18 @@ ${combatNarration}`;
         }
         const attackCheck = { type: "attack", difficultyClass: 10 };
         const attackResult = resolveCheck(attackCheck, attackerCharacter, this.settings, this.appLibs.rpgDiceRoller);
-        battle.combatLog.push(attackResult.statement);
+        battle.combatLog.push(`${action.description} ${attackResult.statement}`);
         if (attackResult.success) {
           const damageRoll = new this.appLibs.rpgDiceRoller.DiceRoll("1d6");
           const damage = damageRoll.total;
           target.currentHp -= damage;
-          battle.combatLog.push(`${attacker.id} deals ${damage} damage to ${target.id}. ${target.id} has ${target.currentHp} HP remaining.`);
-          if (target.currentHp <= 0) {
-            target.status = "dead";
-            battle.combatLog.push(`${target.id} has been defeated.`);
-            if (target.characterIndex !== -1 && context.characters[target.characterIndex]) {
-              const character = context.characters[target.characterIndex];
-              if (character) {
-                character.biography += "\n(DEFEATED IN COMBAT)";
-              }
-            }
-          }
+          const percentageLost = Math.round(damage / target.maxHp * 100);
+          battle.combatLog.push(`${attacker.id} deals ${damage} damage to ${target.id}. Took away ${percentageLost}% of ${target.id}'s life, ${target.id} has ${target.currentHp} HP remaining.`);
         }
         break;
       case "CastSpell":
+        resolveSpell(action, battle, this.appLibs, this.settings);
+        break;
       case "Help":
       case "UseObject":
         const targetLogWithTarget = action.targetId ? ` on ${action.targetId}` : "";
@@ -11817,6 +11984,18 @@ ${combatNarration}`;
       case "Disengage":
       case "Hide":
       case "Ready":
+      /* TODO: Implement the Ready action based on 5th Edition SRD rules.
+      // 1. Set a Trigger: The user must be able to declare a perceivable circumstance that will trigger the action (e.g., "If the goblin steps next to me").
+      // 2. Choose an Action: The user must be able to choose the action to take when the trigger occurs (e.g., "I will move away") or choose to move up to their speed.
+      // 3. Use Your Reaction: When the trigger occurs, the system must use the character's reaction to perform the chosen action. A character only has one reaction per round.
+      // Readying a Spell:
+      // - If a spell is readied, it is cast on the character's turn, but the energy is held, requiring concentration.
+      // - If concentration is broken before the trigger occurs, the spell slot is wasted.
+      // - The spell must have a casting time of 1 action.            
+      const targetLogWithTarget = action.targetId ? ` on ${action.targetId}` : '';
+      battle.combatLog.push(`${action.actorId} set {trigger condition} and {reaction action}.`);
+      break;
+      */
       case "Search":
       case "Move":
         battle.combatLog.push(`${action.actorId} uses the ${action.actionType} action.`);
@@ -11826,6 +12005,16 @@ ${combatNarration}`;
         const targetLogDefault = action.targetId ? ` on ${action.targetId}` : "";
         battle.combatLog.push(`${action.actorId} performs an action: ${action.description}${targetLogDefault}.`);
         break;
+    }
+    if (target && target.currentHp <= 0) {
+      target.status = "dead";
+      battle.combatLog.push(`${target.id} has been defeated.`);
+      if (target.characterIndex !== -1 && context.characters[target.characterIndex]) {
+        const character = context.characters[target.characterIndex];
+        if (character) {
+          character.biography += "\n(DEFEATED IN COMBAT)";
+        }
+      }
     }
   }
   /**
