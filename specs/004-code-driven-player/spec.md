@@ -81,6 +81,12 @@ As a Player, when I declare my action in natural language, I want the system to 
 - **CombatAction**: A structured JSON object representing an action taken in combat. It should contain details like the action type (attack, cast spell, use item), the target, and any associated weapons or spells.
 - **AI Model**: The natural language processing model responsible for interpreting the player's input.
 
+### Integration with Existing Systems *(mandatory)*
+- The Code-Driven Player Action Interpreter AI MUST integrate seamlessly with the existing game engine's combat resolution system.
+- The AI's output, a `CombatAction` JSON object, MUST conform to the schema expected by the current combat processing logic, ensuring compatibility and avoiding redundant action processing implementations.
+- The system SHOULD leverage existing combat validation rules and state management for executing the interpreted `CombatAction` objects, rather than reimplementing them.
+- The AI's role is to translate intent into a structured `CombatAction`, acting as an input layer to the established game mechanics.
+
 ---
 
 ## Review & Acceptance Checklist
