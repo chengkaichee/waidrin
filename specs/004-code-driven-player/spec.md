@@ -1,9 +1,9 @@
-# Feature Specification: Code-Driven Player Action Interpreter AI
+# Feature Specification: Natural Language Command Processor
 
 **Feature Branch**: `004-code-driven-player`
 **Created**: 2025-11-14
 **Status**: Draft
-**Input**: User description: "code driven player action interpreter AI, based on file @Combat Mechanics 30.md: user story: As a Player, when I declare my action in natural language, I want the system to understand my intent perfectly and translate it into a valid, structured `CombatAction` JSON object without any chance of misinterpretation, so that my agency is always respected."
+**Input**: User description: "As a Player, when I declare my action in natural language, I want the system to understand my intent perfectly and translate it into a valid, structured `CombatAction` JSON object without any chance of misinterpretation, so that my agency is always respected."
 
 ## Execution Flow (main)
 ```
@@ -58,9 +58,9 @@ When creating this spec from a user prompt:
 As a Player, when I declare my action in natural language, I want the system to understand my intent perfectly and translate it into a valid, structured `CombatAction` JSON object without any chance of misinterpretation, so that my agency is always respected.
 
 ### Acceptance Scenarios
-1. **Given** a player is in combat, **When** the player enters "I attack the goblin with my sword", **Then** the system should generate a `CombatAction` JSON object representing an attack on the "goblin" target with the "sword" weapon.
-2. **Given** a player is in combat, **When** the player enters "I cast fireball at the group of orcs", **Then** the system should generate a `CombatAction` JSON object representing the "fireball" spell targeting the "group of orcs".
-3. **Given** a player is in combat, **When** the player enters a vague command like "attack", **Then** the system should prompt the player for more information, such as the target.
+1. **Given** a player is in combat and provides a natural language command, **When** the system processes the command "I attack the goblin with my sword", **Then** the `appBackend.getObject()` method should return a `CombatAction` JSON object representing an attack on the "goblin" target with the "sword" weapon.
+2. **Given** a player is in combat and provides a natural language command, **When** the system processes the command "I cast fireball at the group of orcs", **Then** the `appBackend.getObject()` method should return a `CombatAction` JSON object representing the "fireball" spell targeting the "group of orcs".
+3. **Given** a player is in combat and provides a vague command like "attack", **Then** the system should prompt the player for more information before calling the backend.
 
 ### Edge Cases
 - What happens when the player's command is ambiguous or contains multiple possible actions?
@@ -70,22 +70,39 @@ As a Player, when I declare my action in natural language, I want the system to 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
-- **FR-001**: The system MUST accept natural language input from the player during combat.
-- **FR-002**: The system MUST interpret the player's intent from the natural language input.
-- **FR-003**: The system MUST map the player's intent to a structured `CombatAction` JSON object.
-- **FR-004**: The system MUST handle ambiguous or incomplete commands by prompting the user for clarification.
-- **FR-005**: The system MUST provide a high degree of accuracy in interpreting player commands. [NEEDS CLARIFICATION: What is the acceptable accuracy rate? 95%, 99%?]
+- **FR-001**: The `executeCombatRound` method within the game rule plugin MUST be modified to serve as the entry point for processing all actions in a round.
+- **FR-002**: As the first step in `executeCombatRound`, the player's natural language `playerAction` string MUST be parsed into a structured `playerActionObject` by calling `appBackend.getObject()` with a dedicated prompt and the `CombatActionSchema`.
+- **FR-003**: The resulting `playerActionObject` MUST then be used to construct a *second* prompt to generate actions for all non-player combatants (`npcActions`).
+- **FR-004**: The `playerActionObject` and the `npcActions` list MUST be combined into a single, unified list of all actions for the round, which is then sorted by initiative.
+- **FR-005**: The existing `resolveCombatAction` method MUST be used to execute each action in the sorted list.
+- **FR-006**: The `AppBackend` service MUST NOT be modified. This entire pipeline will be implemented within the game rule plugin.
 
-### Key Entities *(include if feature involves data)*
+### Key Entities & Data Contracts *(mandatory)*
+
 - **Player**: The user controlling a character in the game.
-- **CombatAction**: A structured JSON object representing an action taken in combat. It should contain details like the action type (attack, cast spell, use item), the target, and any associated weapons or spells.
-- **AI Model**: The natural language processing model responsible for interpreting the player's input.
+
+- **IGameRuleLogic**: The existing plugin interface. The implementing game rule plugin will integrate the natural language processing logic internally, without adding new public methods to this interface.
+
+- **AppBackend Service**: The existing, unmodified backend service that provides access to the AI engine via the `getObject` method.
+
+- **Data Contract: `CombatAction`**: The structured JSON object to be returned by the `appBackend`. The implementation will use a `zod` schema (`CombatActionSchema`) to enforce this structure. The object MUST contain the following fields:
+  ```json
+  {
+    "actorId": "string",       // The ID of the character performing the action.
+    "actionType": "string",    // e.g., "Attack", "CastSpell", "UseItem".
+    "targetId": "string",      // The ID of the target character or object.
+    "description": "string"  // A description of the action.
+  }
+  ```
 
 ### Integration with Existing Systems *(mandatory)*
-- The Code-Driven Player Action Interpreter AI MUST integrate seamlessly with the existing game engine's combat resolution system.
-- The AI's output, a `CombatAction` JSON object, MUST conform to the schema expected by the current combat processing logic, ensuring compatibility and avoiding redundant action processing implementations.
-- The system SHOULD leverage existing combat validation rules and state management for executing the interpreted `CombatAction` objects, rather than reimplementing them.
-- The AI's role is to translate intent into a structured `CombatAction`, acting as an input layer to the established game mechanics.
+- The feature will be integrated directly into the `executeCombatRound` method within the game rule plugin, replacing the existing placeholder logic for player actions. This ensures a clean, unified pipeline for handling all actions within a combat round.
+- The action resolution will follow a strict, sequential order:
+  1. **Parse Player Action**: The player's natural language command (e.g., "I attack the orc") will be sent to the `appBackend.getObject()` service first to be converted into a structured `playerActionObject`.
+  2. **Generate NPC Actions**: This `playerActionObject` will then be included in a second prompt to the `appBackend` to generate a list of `npcActions`. This ensures that NPC actions are a strategic reaction to the player's specific, committed action.
+  3. **Unify and Sort**: The `playerActionObject` and the `npcActions` list will be combined into a single list of all actions for the round. This list will then be sorted by initiative.
+  4. **Resolve Actions**: The system will iterate through the sorted list and execute each `CombatAction` using the existing `resolveCombatAction` method, which handles the game logic for attacks, damage, etc.
+- This approach avoids action duplication, ensures NPCs react intelligently to player intent, and leverages the existing combat resolution engine without modification.
 
 ---
 

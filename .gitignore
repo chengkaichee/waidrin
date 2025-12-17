@@ -46,8 +46,8 @@ next-env.d.ts
 gha-creds-*.json
 
 # local tools
-.Requirements/
-specs/
+# .Requirements/
+# specs/
 .github/
 .gemini/
 .specify/
