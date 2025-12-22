@@ -1,5 +1,5 @@
 import type { Prompt } from "@/lib/prompts";
-import type { Battle, DnDStats } from "./pluginData";
+import type { Battle, DnDStats, CombatAction } from "./pluginData";
 import type { StoredState } from "@/lib/state";
 
 /**
@@ -512,7 +512,69 @@ export function getCombatantsPrompt(sceneNarration: string, protagonistName: str
   };
 }
 
-export function getCombatRoundActionsPrompt(battle: Battle, playerAction: string, protagonistName: string): Prompt {
+export function getPlayerCombatActionPrompt(playerAction: string, battle: Battle, protagonistId: string): Prompt {
+  const combatantStates = battle.combatants.map(c => `  - ${c.id} (Status: ${c.status}, HP: ${c.currentHp}/${c.maxHp}, Friendly: ${c.isFriendly})`).join('\n');
+
+  const jsonSchema = {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Player Combat Action",
+    "description": "A single action taken by the player combatant.",
+    "type": "object",
+    "$ref": "#/definitions/CombatAction",
+    "definitions": {
+      "CombatAction": {
+        "type": "object",
+        "title": "Combat Action",
+        "description": "A single action taken by a combatant.",
+        "properties": {
+          "actorId": {
+            "type": "string",
+            "description": "The unique name of the combatant performing the action."
+          },
+          "actionType": {
+            "type": "string",
+            "description": "The type of action being performed.",
+            "enum": ["Attack", "CastSpell", "Dash", "Dodge", "Disengage", "Help", "Hide", "Ready", "Search", "UseObject", "Move", "Other"]
+          },
+          "targetId": {
+            "type": "string",
+            "description": "The unique name of the target combatant. This is REQUIRED for actions like 'Attack', 'CastSpell', and 'Help'."
+          },
+          "description": {
+            "type": "string",
+            "description": "A brief narrative description of the action."
+          },
+          "spellName": {
+            "type": "string",
+            "description": "The name of the spell being cast, if actionType is 'CastSpell'.",
+            "enum": ["healing word", "cure wounds", "magic missile", "fireball"]
+          }
+        },
+        "required": ["actorId", "actionType", "description"]
+      }
+    }
+  };
+
+  return {
+    system: `You are a helpful AI assistant for a D&D 5e game. Your task is to parse the player's natural language input into a structured CombatAction JSON object.
+    You must ensure the 'actorId' is always "${protagonistId}".
+    
+    **Critical Instructions:**
+    1. **Vague Commands:** If the input is vague (e.g., "attack", "cast a spell"), you MUST infer the most logical target. For "Attack", pick an active, non-friendly combatant. For "CastSpell" with a helpful spell, pick an injured, friendly combatant.
+    2. **Target Requirement:** If the inferred actionType is "Attack", "CastSpell", "Help", or "UseObject", you MUST include a valid 'targetId' from the list of combatants.
+    3. **Spell Requirement:** If actionType is "CastSpell", you MUST include a 'spellName'.
+    4. If the user's input is a valid natural language sentence but is NOT a valid combat action in the current context (e.g., 'I want to go fishing') OR is too vague (e.g. just 'attack' without target), you MUST return an 'actionType' of 'Other' and start the 'description' field with 'INVALID_ACTION: ' followed by a brief reason.
+    ------    
+    Combatants in the scene:
+    ${combatantStates}
+    ------ `,
+    user: `The player has input: "${playerAction}".
+    Parse this into a valid JSON object conforming to the following schema:
+    ${JSON.stringify(jsonSchema, null, 2)}`
+  };
+}
+
+export function getCombatRoundActionsPrompt(battle: Battle, playerActionObject: CombatAction | null, tacticalGuidance: string | null, protagonistName: string): Prompt {
   let pcDownWarning = "";
   const combatantStates = battle.combatants.map(c => {
     if (c.id === protagonistName && c.currentHp <= 0) {
@@ -574,6 +636,16 @@ export function getCombatRoundActionsPrompt(battle: Battle, playerAction: string
     }
   };
 
+  let playerActionDescription = "";
+  if (playerActionObject) {
+      playerActionDescription = `The player has committed to the following action: ${JSON.stringify(playerActionObject)}.
+      Do NOT generate an action for the protagonist/player ("${protagonistName}"). Only generate actions for the other combatants.
+      Respond to the player's action strategically.`;
+  } else if (tacticalGuidance) {
+      playerActionDescription = `The protagonist is incapacitated but has issued the following tactical guidance to the party: '${tacticalGuidance}'. Adjust NPC actions to prioritize this request if reasonable.
+      Do NOT generate an action for the protagonist/player ("${protagonistName}").`;
+  }
+
   return {
     system: `You are a helpful DM using D&D 5th Edition rules. 
     Your task is to determine the actions for all non-player combatants for the current round of combat based on the provided battle state. 
@@ -600,12 +672,13 @@ export function getCombatRoundActionsPrompt(battle: Battle, playerAction: string
     - **Identify Threats:** A high-priority target is typically the character who has dealt the most damage (check the combat log), is a known healer, or has the lowest remaining HP.
     - **Leader Directives:** If an intelligent leader (e.g., a Hobgoblin Captain) is present, their actions should reflect directing their minions to focus fire on the chosen target.
     - **Avoid Unfavorable Fights:** Weaker enemies (e.g., Goblins) should avoid engaging powerful player characters in one-on-one combat. They should swarm a single target or attack from a distance if possible.`,
-    user: `We are in round ${battle.roundNumber} of combat. The player has declared the following action: "${playerAction}".
+    user: `We are in round ${battle.roundNumber} of combat. 
+    ${playerActionDescription}
+
     The previous combat log is:
     ${battle.combatLog.join('\n')}
     Based on this information, decide the action for each combatant (both friendly and enemies). An active combatant has the status "active".
-    If the player is casting a spell (by saying cast spell name) you MUST provide both a 'targetId' and a 'spellName'.
-    The 'spellName' must be map to the closest one of the following: "healing word", "cure wounds", "magic missile", "fireball".
+    
     For 'CastSpell' actions, the 'description' field should be a brief description of the spell being cast.
     For any action that targets another combatant (like 'Attack', 'CastSpell', 'Help', or 'UseObject'), you MUST include the 'targetId' field, using the exact ID from the list of combatants.
     

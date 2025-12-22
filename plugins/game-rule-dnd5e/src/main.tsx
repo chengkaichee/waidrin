@@ -16,8 +16,8 @@ import type { Context } from "@/app/plugins";
 import type { Prompt } from "@/lib/prompts";
 import type * as RadixThemes from '@radix-ui/themes';
 import type { useShallow } from 'zustand/shallow';
-import { DnDStats, generateDefaultDnDStats, DnDClassData, DnDStatsSchema, resolveCheck as getResolveCheck, Combatant, canCombatantAct, CombatAction, CombatRoundActionsSchema, CheckResult, PlotType } from "./pluginData";
-import { getBackstory, modifyProtagonistPromptForDnd, getChecksPrompt, getConsequenceGuidancePrompt, getDndNarrationGuidance, getLocationChangePrompt, getCombatantsPrompt, getCombatRoundActionsPrompt, getCombatRoundNarrationPrompt, assignPlotType } from "./pluginPrompt";
+import { DnDStats, generateDefaultDnDStats, DnDClassData, DnDStatsSchema, resolveCheck as getResolveCheck, Combatant, canCombatantAct, CombatAction, CombatActionSchema, CombatRoundActionsSchema, CheckResult, PlotType } from "./pluginData";
+import { getBackstory, modifyProtagonistPromptForDnd, getChecksPrompt, getConsequenceGuidancePrompt, getDndNarrationGuidance, getLocationChangePrompt, getCombatantsPrompt, getPlayerCombatActionPrompt, getCombatRoundActionsPrompt, getCombatRoundNarrationPrompt, assignPlotType } from "./pluginPrompt";
 import { resolveSpell } from "./pluginSpells";
 import * as z from "zod/v4";
 
@@ -520,112 +520,214 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
   /**
    * @method executeCombatRound
    * @description Executes a single round of combat. This method orchestrates the entire combat flow for a round:
-   * 1. Clears the combat log for the new round.
-   * 2. Constructs a prompt for the LLM to determine NPC actions based on the player's action and current battle state.
-   * 3. Calls the LLM to get NPC actions, with a fallback to basic attacks if the LLM call fails.
-   * 4. Combines player and NPC actions, then sorts them by initiative order.
-   * 5. Iterates through the sorted actions, resolving each one using `resolveCombatAction`.
-   * 6. Checks for combat end conditions (all enemies or all friendlies defeated).
-   * 7. If combat ends, it updates the plot type and clears the encounter data. Otherwise, it increments the round number.
-   * 8. Finally, it generates a comprehensive narrative summary of the round's events using the combat log and returns it.
+   * 1. Checks for combat end conditions.
+   * 2. Parses the player's natural language action into a CombatAction object.
+   * 3. Handles parsing errors with Auto-Resolve, Manual Input, or Retry options.
+   * 4. Determines NPC actions based on the player's committed action or tactical guidance.
+   * 5. Unifies and resolves all actions in initiative order.
    * @param {string} playerAction - The action taken by the player character.
    * @returns {Promise<string>} A promise that resolves to a string containing the combat round's narration.
    */
   private async executeCombatRound(playerAction: string, context: WritableDraft<State>): Promise<string> {
-    if (!this.settings || !this.appBackend || !this.settings.encounter) {
-      console.error("Settings, backend, or encounter not available for executing combat round.");
+    if (!this.settings || !this.appBackend || !this.appUI || !this.settings.encounter) {
+      console.error("Settings, backend, UI, or encounter not available for executing combat round.");
       return "";
     }
 
     const battle = this.settings.encounter;
-    const prompt = getCombatRoundActionsPrompt(battle, playerAction, context.protagonist.name);
-    // console.log("DEBUG: Prompt for LLM generated character actions:", JSON.stringify(prompt, null, 2));
-    // Clear the log once the NPC actions Prompt have been generated
-    battle.combatLog = [];
-    let npcActions: CombatAction[] = [];
+    const protagonistId = context.protagonist.name;
+    const playerCombatant = battle.combatants.find(c => c.characterIndex === -1);
 
-    try {
-      const TempCombatRoundActionsResponseSchema = z.object({
-        actions: CombatRoundActionsSchema,
-      });
-      // Call the getObject to generate NPC actions JSON for this round
-      const combatRoundResponse = await this.appBackend.getObject(prompt, TempCombatRoundActionsResponseSchema);
-      npcActions = combatRoundResponse.actions as CombatAction[];
-      //console.log("DEBUG: NPC Actions from LLM:", npcActions);
+    // T004: Legacy hardcoded logic removed.
 
-    } catch (error) {
-      console.error("Error getting NPC actions from LLM, using fallback for all NPCs:", error);
-      if (error instanceof z.ZodError) {
-        console.error("DEBUG: Zod validation issues:", JSON.stringify(error.issues, null, 2));
-      } else {
-        console.error("DEBUG: Raw error from appBackend.getObject:", error);
-      }
-      npcActions = []; // clear any partial actions
+    // Pre-check: Combat End Conditions
+    const initialEnemies = battle.combatants.filter(c => !c.isFriendly && canCombatantAct(c.status));
+    if (initialEnemies.length === 0) {
+      this.settings.plotType = "general";
+      this.settings.encounter = undefined;
+      return "The enemies have been defeated. Victory!";
     }
 
-    // Fallback logic for any NPC that doesn't have an action from the LLM
-    // TODO: Improve fallback logic to be more than just attack, and consider NPC personalities (isFriendly, etc), this list can validate the LLM decisions
-    // Also consider adding "Defend" or "Wait" actions for friendlies if no enemies are available
-    // Also consider adding "Heal" actions for friendlies if they have healing abilities and an ally is injured
-    // Also consider adding "CastSpell" actions for NPCs with spellcasting abilities
-    // Also consider adding "UseItem" actions for NPCs with items in their inventory
-    // Also consider adding "Flee" actions for NPCs that are low on HP or outnumbered
-    // Also consider adding "SpecialAbility" actions for NPCs with unique abilities or traits
-    // Also need to check what happens if the action is not valid (e.g., target is already defeated)
-    // Also need to check if the combatant can actually perform the action (e.g., has enough resources, is not stunned, etc)
-    // Also need to consider the action economy (e.g., bonus actions, reactions, etc)
+    let playerActionObject: CombatAction | null = null;
+    let tacticalGuidance: string | null = null;
+
+    // T005: Implement player status check logic
+    if (playerCombatant && canCombatantAct(playerCombatant.status)) {
+        let parsingDone = false;
+        let currentActionInput = playerAction;
+
+        while (!parsingDone) {
+            // T006: Implement the try/catch parsing block
+            try {
+                const prompt = getPlayerCombatActionPrompt(currentActionInput, battle, protagonistId);
+                playerActionObject = await this.appBackend.getObject(prompt, CombatActionSchema);
+                
+                // Validation: Check if INVALID_ACTION flag returned by LLM
+                if (playerActionObject.actionType === 'Other' && playerActionObject.description.startsWith("INVALID_ACTION:")) {
+                    throw new Error(playerActionObject.description);
+                }
+                parsingDone = true;
+
+            } catch (error: any) {
+                // T007: Implement robust error handling strategies
+                const errorMessage = error.message || "We were unable to parse your last prompt into a valid D&D action.";
+                
+                // DEC 21 - The following line is commented out as it caused a persistent, non-dismissible error box.
+                // this.appUI.showError(errorMessage);
+                
+                // The window.prompt now serves as the sole error notification and decision point.
+                const choice = window.prompt(
+                    `${errorMessage}\n\nHow would you like to proceed?\n1. Auto-Resolve (System picks a safe action)\n2. Manual Input (Choose from lists)\n3. Retry (Rewrite your command)`, 
+                    "1"
+                );
+
+                // T007: Option 1 - Auto-Resolve (Fallback)
+                if (choice === "1" || choice === null) {
+                    const hpPercent = (playerCombatant.currentHp / playerCombatant.maxHp) * 100;
+                    const canHeal = ["Cleric", "Druid", "Bard", "Paladin"].includes(this.settings.dndClass);
+
+                    if (hpPercent < 25) { // Condition: Life Critical
+                        if (canHeal) { // Priority 1: Heal
+                            playerActionObject = {
+                                actorId: protagonistId,
+                                actionType: "CastSpell",
+                                targetId: protagonistId,
+                                spellName: "cure wounds",
+                                description: "Life critical! Casting Cure Wounds on self."
+                            };
+                        } else { // Priority 3: Dodge (Priority 2: Retreat skipped)
+                            playerActionObject = {
+                                actorId: protagonistId,
+                                actionType: "Dodge",
+                                description: "Life critical! Taking a defensive stance."
+                            };
+                        }
+                    } else { // Life Stable
+                        const criticalAlly = battle.combatants.find(c => c.isFriendly && c.characterIndex !== -1 && (c.currentHp / c.maxHp) < 0.25 && canCombatantAct(c.status));
+                        
+                        if (criticalAlly) { // Priority 1: Aid Allies
+                            playerActionObject = {
+                                actorId: protagonistId,
+                                actionType: "Help",
+                                targetId: criticalAlly.id,
+                                description: `Aiding ${criticalAlly.id} who is in critical condition.`
+                            };
+                        } else { // Priority 3: Attack (Priority 2: Protect skipped)
+                            const enemies = battle.combatants.filter(c => !c.isFriendly && canCombatantAct(c.status));
+                            const target = enemies.length > 0 ? enemies[0] : null;
+                            playerActionObject = {
+                                actorId: protagonistId,
+                                actionType: "Attack",
+                                targetId: target?.id,
+                                description: `Attacking ${target?.id || "the enemy"}.`
+                            };
+                        }
+                    }
+                    parsingDone = true;
+
+                // T007: Option 2 - Manual Input (Simulated Dropdowns)
+                } else if (choice === "2") {
+                    // 1. Select Action Type
+                    const actionTypes = CombatActionSchema.shape.actionType.options;
+                    const actionList = actionTypes.map((a, i) => `${i + 1}. ${a}`).join("\n");
+                    const actionChoice = window.prompt(`Select Action Type:\n${actionList}`, "1");
+                    const chosenActionType = actionTypes[parseInt(actionChoice || "1") - 1] || "Attack";
+
+                    // 2. Select Target (if required)
+                    let targetId: string | undefined = undefined;
+                    if (["Attack", "CastSpell", "Help", "UseObject"].includes(chosenActionType)) {
+                        const validTargets = battle.combatants.filter(c => canCombatantAct(c.status));
+                        if (validTargets.length > 0) {
+                            const targetList = validTargets.map((t, i) => `${i + 1}. ${t.id} (${t.isFriendly ? 'Ally' : 'Enemy'}, HP: ${t.currentHp})`).join("\n");
+                            const targetChoice = window.prompt(`Select Target for ${chosenActionType}:\n${targetList}`, "1");
+                            targetId = validTargets[parseInt(targetChoice || "1") - 1]?.id;
+                        }
+                    }
+
+                    // 3. Select Item/Spell/Rank
+                    let spellName: string | undefined = undefined;
+                    let extraInfo = "";
+                    if (chosenActionType === "CastSpell") {
+                        const spells = ["healing word", "cure wounds", "magic missile", "fireball"];
+                        const spellList = spells.map((s, i) => `${i + 1}. ${s}`).join("\n");
+                        const spellChoice = window.prompt(`Select Spell:\n${spellList}`, "1");
+                        spellName = spells[parseInt(spellChoice || "1") - 1];
+                    } else if (chosenActionType === "Move") {
+                        const ranks = ["Front", "Middle", "Rear"];
+                        const rankList = ranks.map((r, i) => `${i + 1}. ${r}`).join("\n");
+                        const rankChoice = window.prompt(`Select Rank:\n${rankList}`, "2");
+                        extraInfo = ` Moving to ${ranks[parseInt(rankChoice || "2") - 1]} rank.`;
+                    }
+
+                    playerActionObject = {
+                        actorId: protagonistId,
+                        actionType: chosenActionType,
+                        targetId: targetId,
+                        spellName: spellName as any,
+                        description: `Manually selected: ${chosenActionType}${targetId ? ` on ${targetId}` : ""}.${extraInfo}`
+                    };
+                    parsingDone = true;
+
+                // T007: Option 3 - Retry
+                } else if (choice === "3") {
+                    const newAction = window.prompt("Edit your command:", currentActionInput);
+                    if (newAction) {
+                        currentActionInput = newAction;
+                    } else {
+                        // User cancelled retry prompt
+                        playerActionObject = { actorId: protagonistId, actionType: "Dodge", description: "Taking a defensive stance." };
+                        parsingDone = true;
+                    }
+                }
+            }
+        }
+    } else {
+        // T005: Incapacitated Flow
+        playerActionObject = { actorId: protagonistId, actionType: "Other", description: "Incapacitated and cannot act." };
+        tacticalGuidance = playerAction;
+    }
+
+    // T008: Implement unified action list generation
+    battle.combatLog = [];
+    const npcPrompt = getCombatRoundActionsPrompt(battle, playerActionObject, tacticalGuidance, protagonistId);
+    let npcActions: CombatAction[] = [];
+    try {
+      const TempCombatRoundActionsResponseSchema = z.object({ actions: CombatRoundActionsSchema });
+      const combatRoundResponse = await this.appBackend.getObject(npcPrompt, TempCombatRoundActionsResponseSchema);
+      npcActions = combatRoundResponse.actions;
+    } catch (error) {
+      console.error("Error getting NPC actions from LLM, using fallback.", error);
+      npcActions = []; 
+    }
+
+    // T008: Duplication Protection (filter out player from NPC actions)
+    const filteredNpcActions = npcActions.filter(action => action.actorId !== protagonistId);
+
+    // Fallback logic for missing NPCs
     const activeNonPlayerCombatants = battle.combatants.filter(c => c.characterIndex !== -1 && canCombatantAct(c.status));
-    const npcsWithActions = npcActions.map(a => a.actorId);
+    const npcsWithActions = filteredNpcActions.map(a => a.actorId);
 
     for (const combatant of activeNonPlayerCombatants) {
         if (!npcsWithActions.includes(combatant.id)) {
-            console.log(`Generating fallback action for ${combatant.id} who was missed by the LLM.`);
-            if (combatant.isFriendly) {
-                const enemyTargets = battle.combatants.filter(c => !c.isFriendly && canCombatantAct(c.status));
-                if (enemyTargets.length > 0) {
-                    const target = enemyTargets[Math.floor(Math.random() * enemyTargets.length)];
-                    const fallbackAction: CombatAction = {
-                        actorId: combatant.id,
-                        actionType: "Attack",
-                        targetId: target.id,
-                        description: `${combatant.id} attacks ${target.id}.`
-                    };
-                    npcActions.push(fallbackAction);
-                }
-            } else { // is an enemy
-                const potentialTargets = battle.combatants.filter(c => c.isFriendly && canCombatantAct(c.status));
-                if (potentialTargets.length > 0) {
-                    const target = potentialTargets[Math.floor(Math.random() * potentialTargets.length)];
-                    const fallbackAction: CombatAction = {
-                        actorId: combatant.id,
-                        actionType: "Attack",
-                        targetId: target.id,
-                        description: `${combatant.id} attacks ${target.id}.`
-                    };
-                    npcActions.push(fallbackAction);
-                }
+            const potentialTargets = battle.combatants.filter(c => c.isFriendly !== combatant.isFriendly && canCombatantAct(c.status));
+            if (potentialTargets.length > 0) {
+                const target = potentialTargets[0];
+                filteredNpcActions.push({
+                    actorId: combatant.id,
+                    actionType: "Attack",
+                    targetId: target.id,
+                    description: `${combatant.id} attacks ${target.id} as a fallback.`
+                });
             }
         }
     }
 
-    // Combine player and NPC actions and sort them by initiative roll (descending).
-    const playerCombatant = battle.combatants.find(c => c.characterIndex === -1);
+    // Combine actions and sort by initiative
     const allActions: (CombatAction & { initiative: number })[] = [];
-
-    if (playerCombatant && canCombatantAct(playerCombatant.status)) {
-        // Create a combat action object for the player.
-        // TODO: This is a simplified representation. A more robust solution would parse the playerAction string using similar function 
-        // const combatRoundResponse = await this.appBackend.getObject(prompt, TempCombatRoundActionsResponseSchema);.
-        const playerActionObject: CombatAction = {
-            actorId: playerCombatant.id,
-            actionType: "Attack", // Assuming player always attacks for now.
-            targetId: battle.combatants.find(c => !c.isFriendly && canCombatantAct(c.status))?.id, // Target the first available enemy.
-            description: playerAction
-        };
-        allActions.push({ ...playerActionObject, initiative: playerCombatant.initiativeRoll });
+    if (playerActionObject) {
+        allActions.push({ ...playerActionObject, initiative: playerCombatant?.initiativeRoll || 0 });
     }
-
-    npcActions.forEach(action => {
+    filteredNpcActions.forEach(action => {
         const combatant = battle.combatants.find(c => c.id === action.actorId);
         if (combatant) {
             allActions.push({ ...action, initiative: combatant.initiativeRoll });
@@ -634,7 +736,8 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
 
     allActions.sort((a, b) => b.initiative - a.initiative);
     console.log("DEBUG: All Actions in Initiative Order:", allActions);
-    // Process all actions in initiative order.
+
+    // Process all actions
     for (const action of allActions) {
         const combatant = battle.combatants.find(c => c.id === action.actorId);
         if (combatant && canCombatantAct(combatant.status)) {
@@ -642,34 +745,25 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
         }
     }
 
-    // Check for combat end conditions.
-    // TODO: if player is unconscious, allow for revival actions by friendlies before ending combat, but player cannot act until revived.
-    // TODO: Player actions will need to be adjusted according to the status of the player combatant.
+    // Check for combat end conditions
     const remainingEnemies = battle.combatants.filter(c => !c.isFriendly && canCombatantAct(c.status));
     const remainingFriendlies = battle.combatants.filter(c => c.isFriendly && canCombatantAct(c.status));
 
     if (remainingEnemies.length === 0) {
-      console.log("DEBUG: COMBAT ENDED - VICTORY");
-      battle.combatLog.push("All enemies have been defeated! Victory! Combat is over.");
+      battle.combatLog.push("All enemies defeated! Victory!");
       this.settings.plotType = "general";
       this.settings.encounter = undefined;
     } else if (remainingFriendlies.length === 0) {
-        console.log("DEBUG: COMBAT ENDED - DEFEAT");
-        battle.combatLog.push("All friendly characters have been defeated! You died! Game over narrate the end of story.");
+        battle.combatLog.push("All friendlies defeated! Game over.");
         this.settings.plotType = "general";
         this.settings.encounter = undefined;
     } else {
-        // If combat continues, increment the round number.
-        console.log('DEBUG: Enemies remaining: ', remainingEnemies.length, ' | Friendlies remaining: ', remainingFriendlies.length);
-        battle.combatLog.push("The battle is not over yet... preparing for next round remaining in this same location! do not change location.");
+        battle.combatLog.push("The battle continues...");
         battle.roundNumber++;
     }
 
-    // Generate and return the final narrative summary for the round.
-    console.log("DEBUG: COMBAT LOG:", battle.combatLog);
     const narrationPrompt = getCombatRoundNarrationPrompt(battle.combatLog);
-    const roundNarration = await this.appBackend.getNarration(narrationPrompt);
-    return roundNarration;
+    return await this.appBackend.getNarration(narrationPrompt);
   }
 
   /**

@@ -50,7 +50,7 @@ gha-creds-*.json
 # specs/
 .github/
 .gemini/
-.specify/
+#.specify/
 gemini.md
 session_recovery_script.md
 scripts/
