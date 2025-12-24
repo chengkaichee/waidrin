@@ -16,10 +16,10 @@ import type { Context } from "@/app/plugins";
 import type { Prompt } from "@/lib/prompts";
 import type * as RadixThemes from '@radix-ui/themes';
 import type { useShallow } from 'zustand/shallow';
-import { DnDStats, generateDefaultDnDStats, DnDClassData, DnDStatsSchema, resolveCheck as getResolveCheck, Combatant, canCombatantAct, CombatAction, CombatActionSchema, CombatRoundActionsSchema, CheckResult, PlotType } from "./pluginData";
+import { DnDStats, generateDefaultDnDStats, DnDClassData, DnDStatsSchema, resolveCheck as getResolveCheck, Combatant, canCombatantAct, CombatAction, CombatActionSchema, CombatRoundActionsSchema, PlotType } from "./pluginData";
 import { getBackstory, modifyProtagonistPromptForDnd, getChecksPrompt, getConsequenceGuidancePrompt, getDndNarrationGuidance, getLocationChangePrompt, getCombatantsPrompt, getPlayerCombatActionPrompt, getCombatRoundActionsPrompt, getCombatRoundNarrationPrompt, assignPlotType } from "./pluginPrompt";
 import { resolveSpell } from "./pluginSpells";
-import { generateEncounter } from "./encounterTable";
+import { generateEncounter, initEncounterTable } from "./encounterTable";
 import * as z from "zod/v4";
 
 import type { Character, State, CheckResolutionResult } from "@/lib/state"; // Import Character and State
@@ -262,6 +262,9 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
     // Assign the main application's React instance to the module-level React variable.
     // This is critical for all JSX within this plugin to use the correct React instance.
     React = appLibs.react;
+
+    // Initialize Encounter Table with injected dice roller
+    initEncounterTable(appLibs.rpgDiceRoller);
 
     // Register the D&D 5E tab in the CharacterSelect screen
     this.context.addCharacterUI(
@@ -763,6 +766,7 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
         battle.roundNumber++;
     }
 
+    console.log("DEBUG: COMBAT LOG for Narration:", battle.combatLog);
     const narrationPrompt = getCombatRoundNarrationPrompt(battle.combatLog);
     return await this.appBackend.getNarration(narrationPrompt);
   }
@@ -784,12 +788,46 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
 
     const battle = this.settings.encounter;
     const attacker = battle.combatants.find(c => c.id === action.actorId);
-    const target = battle.combatants.find(c => c.id === action.targetId);
+    let target = battle.combatants.find(c => c.id === action.targetId);
 
     // Validate that the attacker exists.
     if (!attacker) {
         battle.combatLog.push(`Attacker ${action.actorId} not found.`);
         return;
+    }
+
+    // --- TARGET VALIDATION & AUTO-CORRECTION ---
+    const helpfulSpells = ["healing word", "cure wounds"];
+    const harmfulSpells = ["magic missile", "fireball"];
+
+    const isHelpfulAction = action.actionType === "Help" || 
+                            (action.actionType === "CastSpell" && helpfulSpells.includes(action.spellName || ""));
+    
+    const isHarmfulAction = action.actionType === "Attack" || 
+                             (action.actionType === "CastSpell" && harmfulSpells.includes(action.spellName || ""));
+
+    if (target) {
+        if (isHelpfulAction && attacker.isFriendly !== target.isFriendly) {
+            // CORRECTION: Helpful action targeting opposite side -> Redirect to lowest HP ally
+            const allies = battle.combatants.filter(c => c.isFriendly === attacker.isFriendly && canCombatantAct(c.status));
+            if (allies.length > 0) {
+                allies.sort((a, b) => a.currentHp - b.currentHp);
+                const newTarget = allies[0];
+                console.log(`DEBUG: COMBAT: Redirecting helpful action from ${attacker.id} (Target was enemy ${target.id}) to ally ${newTarget.id}.`);
+                action.targetId = newTarget.id;
+                target = newTarget;
+            }
+        } else if (isHarmfulAction && attacker.isFriendly === target.isFriendly) {
+            // CORRECTION: Harmful action targeting same side -> Redirect to an enemy with lowest HP
+            const enemies = battle.combatants.filter(c => c.isFriendly !== attacker.isFriendly && canCombatantAct(c.status));
+            if (enemies.length > 0) {
+                enemies.sort((a, b) => a.currentHp - b.currentHp);
+                const newTarget = enemies[0];
+                console.log(`DEBUG: COMBAT: Redirecting harmful action from ${attacker.id} (Target was ally ${target.id}) to enemy ${newTarget.id}.`);
+                action.targetId = newTarget.id;
+                target = newTarget;
+            }
+        }
     }
 
     // Handle action types with a switch statement for clarity and extensibility.
@@ -933,7 +971,7 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
         encounterDescription: z.string().optional(),
       });
 
-      // Construct LLM prompt
+      // Construct LLM prompt (Used for context extraction now)
       let sceneNarration = "";
       if (context) {
         for (let i = context.events.length - 1; i >= 0; i--) {
@@ -948,7 +986,14 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
       // Gather all known character names to provide context to the LLM to determine each character's action.
       const knownCharacterNames = context.characters.map(c => c.name);
       const combatantsPrompt = getCombatantsPrompt(sceneNarration, context.protagonist.name || "", knownCharacterNames);
-      const combatantsLLMResponse = await this.appBackend.getObject(combatantsPrompt, CombatantsLLMSchema);
+      
+      let combatantsLLMResponse;
+      try {
+        combatantsLLMResponse = await this.appBackend.getObject(combatantsPrompt, CombatantsLLMSchema);
+      } catch (error) {
+        console.error("Error getting combatants from LLM, proceeding with random encounter only:", error);
+        combatantsLLMResponse = { knownCharacters: [], newNamedCharacters: [], unnamedEnemies: { count: 0, type: "Unknown" } };
+      }
 
       const allCombatants: Combatant[] = [];
 
@@ -967,22 +1012,27 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
         });
       }
 
-      // Process known characters from the LLM response
-      // TODO: Get LLM to provide race, gender, HD, description
-      // TODO: create a permanent stat block for known characters in the global state for future encounters
-      if (combatantsLLMResponse.knownCharacters) {
+      // 1. Process Named Characters (Hybrid Mode: Story-driven Villains/NPCs)
+      
+      // Known Characters (Already in context.characters)
+      if (combatantsLLMResponse?.knownCharacters) {
         for (const char of combatantsLLMResponse.knownCharacters) {
-          if (context.protagonist && char.name === context.protagonist.name) {
-            continue; // Skip protagonist, already added
-          }
+          if (context.protagonist && char.name === context.protagonist.name) continue; 
+          
           const charIndex = context.characters.findIndex(c => c.name === char.name);
           if (charIndex !== -1) {
+            // Validation: Ensure character is actually at the current location
+            if (context.characters[charIndex].locationIndex !== context.protagonist.locationIndex) {
+                console.log(`DEBUG: Skipping ${char.name} for combat - not at current location.`);
+                continue;
+            }
+
             const initiativeRoll = new rpgDiceRoller.DiceRoll(`1d20`);
             allCombatants.push({
               id: char.name,
               characterIndex: charIndex,
-              currentHp: 24, // Placeholder HP, ideally get from character state
-              maxHp: 24, // Placeholder HP
+              currentHp: 20, //TODO: Placeholder HP, ideally read from char state if we tracked it
+              maxHp: 20, 
               status: "active",
               initiativeRoll: initiativeRoll.total,
               isFriendly: char.isFriendly,
@@ -991,25 +1041,26 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
         }
       }
 
-      //Process and create new named characters
-      // TODO: Get LLM to provide race, gender, HD, description      
-      if (combatantsLLMResponse.newNamedCharacters) {
+      // New Named Characters (Villains/NPCs introduced in this scene)
+      if (combatantsLLMResponse?.newNamedCharacters) {
         for (const char of combatantsLLMResponse.newNamedCharacters) {
           const newChar: Character = {
             name: char.name,
+            gender: "male", //TODO: Default to male for now
+            race: "human", //TODO: Default to human for now
             biography: char.description,
-            gender: "male", // Placeholder
-            race: "human", // Placeholder
-            locationIndex: context.protagonist.locationIndex, // Assume same location
+            locationIndex: context.protagonist.locationIndex,
           };
           context.characters.push(newChar);
           const charIndex = context.characters.length - 1;
+          
           const initiativeRoll = new rpgDiceRoller.DiceRoll(`1d20`);
+          // Give named characters slightly better stats than minions
           allCombatants.push({
             id: char.name,
             characterIndex: charIndex,
-            currentHp: 24, // Placeholder HP
-            maxHp: 24, // Placeholder HP
+            currentHp: 30, // Boss/Named char buffer
+            maxHp: 30,
             status: "active",
             initiativeRoll: initiativeRoll.total,
             isFriendly: char.isFriendly,
@@ -1017,31 +1068,59 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
         }
       }
 
-      // Process and create unnamed enemies
-      // TODO: Get LLM to provide race, gender, HD, description
-      if (combatantsLLMResponse.unnamedEnemies && combatantsLLMResponse.unnamedEnemies.count > 0) {
-        for (let i = 0; i < combatantsLLMResponse.unnamedEnemies.count; i++) {
-          const enemyName = `${combatantsLLMResponse.unnamedEnemies.type} ${i + 1}`;
+      // 2. Identify Biome and Difficulty for Minions
+      const currentLocation = context.locations[context.protagonist.locationIndex];
+      const biome = currentLocation.type || "road"; // Fallback to road
+      
+      let difficulty: "easy" | "medium" | "hard" | "deadly" = "medium";
+      // If action string contains aggressive keywords, assume the player is looking for trouble -> Harder encounter
+      const lookingForTrouble = action && /attack|hunt|raid|provoke|slay|kill|search/i.test(action);
+      if (lookingForTrouble) {
+          difficulty = "hard";
+          console.log("DEBUG: Player is looking for trouble. Scaling difficulty to Hard.");
+      }
+
+      // 2. Generate Encounter based on Narration + Biome + Difficulty
+      const monsters = generateEncounter({
+          narration: sceneNarration,
+          locationType: biome,
+          partyLevel: PCStats.dndLevel,
+          partySize: 1, // Future: calculate based on friendly combatants present
+          difficulty: difficulty
+      });
+
+      console.log(`DEBUG: Generated Encounter: ${monsters.map(m => m.name).join(", ")} based on narration: "${sceneNarration.substring(0, 50)}..."`);
+
+      // 3. Add Generated Monsters to State
+      for (let i = 0; i < monsters.length; i++) {
+          const m = monsters[i];
+          // If multiple of same type, number them (e.g., Goblin 1, Goblin 2)
+          const countOfType = monsters.filter(mon => mon.name === m.name).length;
+          const indexInType = monsters.slice(0, i).filter(mon => mon.name === m.name).length + 1;
+          const enemyName = countOfType > 1 ? `${m.name} ${indexInType}` : m.name;
+          
           const enemyChar: Character = {
             name: enemyName,
-            gender: "male",
-            race: "monster",
-            biography: `A generic ${combatantsLLMResponse.unnamedEnemies.type}.`,
+            gender: "male", //TODO: Default to male for now
+            race: "monster", //TODO: Default to monster for now, should use m.type if available
+            biography: "Monster Type: " + m.type + " - Description: " + m.description,
             locationIndex: context.protagonist.locationIndex,
           };
           context.characters.push(enemyChar);
           const charIndex = context.characters.length - 1;
-          const initiativeRoll = new rpgDiceRoller.DiceRoll(`1d20`);
+          
+          // Basic Initiative for monsters (Dex +0 assumed for now, ideally in StatBlock)
+          const initiativeRoll = new rpgDiceRoller.DiceRoll('1d20').total;
+
           allCombatants.push({
             id: enemyName,
             characterIndex: charIndex,
-            currentHp: 8, // Placeholder HP
-            maxHp: 8, // Placeholder HP
+            currentHp: m.hp,
+            maxHp: m.hp,
             status: "active",
-            initiativeRoll: initiativeRoll.total,
+            initiativeRoll: initiativeRoll,
             isFriendly: false,
           });
-        }
       }
 
       // Sort combatants by initiative (descending)

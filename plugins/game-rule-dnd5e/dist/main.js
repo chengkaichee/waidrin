@@ -11141,7 +11141,7 @@ ${checkResult.join("\n")}` : "No specific checks were needed for this action.";
     Do NOT include dialogue or character speech in your guidance.`
   };
 }
-var dndRulesDMStyle = "Ensure your narration aligns with D&D 5e fantasy themes, character abilities, and typical role-playing scenarios that the famous DM Matt Mercer would narrate.";
+var dndRulesDMStyle = "Ensure your narration aligns with D&D 5e fantasy themes, character abilities, and typical role-playing scenarios that the famous DM Matt Mercer would narrate. Always tell the scene based on because the player did something therefore this next challenge (e.g. Combat is very obvious consequence, a new obstacle, a change in circumstances) happen, do not end the narration with how the character is feeling or how readily they feel.";
 var dndRulesCombat = "Narrate this as a dynamic combat scene, focusing on action and character reactions, adhering to D&D 5e combat rules.";
 function getDndNarrationGuidance(eventType) {
   let guidance = "";
@@ -11393,7 +11393,7 @@ function getCombatRoundNarrationPrompt(combatLog) {
 
     Combine these events into a single, cohesive paragraph. Describe the actions, reactions, and outcomes in a way that brings the scene to life. 
     Focus on vivid descriptions and the flow of battle. Do not break it into separate lines or bullet points.
-    Your entire response must be a single paragraph.`
+    Your entire response must be a single paragraph. The last line of your response must be the last line from the combat log.`
   };
 }
 function assignPlotType(narrationText, plotTypes) {
@@ -11546,6 +11546,300 @@ function resolveSpell(action, battle, appLibs, settings) {
   }
 }
 
+// src/encounterTable.ts
+var injectedDiceRoller;
+function initEncounterTable(injectedRpgDiceRoller) {
+  console.log("DEBUG: initEncounterTable called with injectedRpgDiceRoller.");
+  injectedDiceRoller = injectedRpgDiceRoller;
+}
+var MonsterDatabase = [
+  // --- 1. Humanoids (Bandits, Orcs, Goblins) ---
+  {
+    id: "goblin",
+    name: "Goblin",
+    type: "Humanoid",
+    keywords: ["goblin", "small", "horde", "ambush", "greenskin", "runt"],
+    biomes: ["Forest", "Cave", "Dungeon", "Hill"],
+    ac: 15,
+    hp: 7,
+    cr: 0.25,
+    description: "A small, malicious humanoid with nimble movements."
+  },
+  {
+    id: "bandit",
+    name: "Bandit",
+    type: "Humanoid",
+    keywords: ["bandit", "thug", "human", "robber", "outlaw", "criminal", "highwayman"],
+    biomes: ["Road", "Forest", "Urban", "Hill"],
+    ac: 12,
+    hp: 11,
+    cr: 0.125,
+    description: "A rough-looking human looking for easy prey."
+  },
+  {
+    id: "orc",
+    name: "Orc",
+    type: "Humanoid",
+    keywords: ["orc", "savage", "warrior", "raid", "brute", "tusks"],
+    biomes: ["Mountain", "Hill", "Cave", "Badland"],
+    ac: 13,
+    hp: 15,
+    cr: 0.5,
+    description: "A hulking grey-skinned warrior with a greataxe."
+  },
+  {
+    id: "hobgoblin",
+    name: "Hobgoblin",
+    type: "Humanoid",
+    keywords: ["hobgoblin", "soldier", "leader", "armored", "disciplined", "captain"],
+    biomes: ["Forest", "Hill", "Dungeon"],
+    ac: 18,
+    hp: 11,
+    cr: 0.5,
+    description: "A disciplined, orange-skinned humanoid in chain mail."
+  },
+  {
+    id: "thug",
+    name: "Thug",
+    type: "Humanoid",
+    keywords: ["thug", "enforcer", "brute", "gang", "heavy"],
+    biomes: ["Urban", "Road", "Dungeon"],
+    ac: 11,
+    hp: 32,
+    cr: 0.5,
+    description: "A ruthless enforcer with a mace."
+  },
+  // --- 2. Undead (Skeletons, Zombies) ---
+  {
+    id: "skeleton",
+    name: "Skeleton",
+    type: "Undead",
+    keywords: ["skeleton", "bones", "undead", "rattle", "archer", "skeletal"],
+    biomes: ["Dungeon", "Crypt", "Ruins", "Graveyard"],
+    ac: 13,
+    hp: 13,
+    cr: 0.25,
+    description: "Animated bones holding a weapon."
+  },
+  {
+    id: "zombie",
+    name: "Zombie",
+    type: "Undead",
+    keywords: ["zombie", "rot", "corpse", "undead", "shambling", "walker"],
+    biomes: ["Swamp", "Dungeon", "Crypt", "Graveyard"],
+    ac: 8,
+    hp: 22,
+    cr: 0.25,
+    description: "A rotting corpse animated by dark magic."
+  },
+  {
+    id: "ghoul",
+    name: "Ghoul",
+    type: "Undead",
+    keywords: ["ghoul", "flesh-eater", "paralyzing", "undead", "hungry"],
+    biomes: ["Dungeon", "Crypt", "Ruins", "Graveyard"],
+    ac: 12,
+    hp: 22,
+    cr: 1,
+    description: "A feral, flesh-eating undead creature."
+  },
+  {
+    id: "specter",
+    name: "Specter",
+    type: "Undead",
+    keywords: ["specter", "ghost", "spirit", "incorporeal", "wraith", "phantom"],
+    biomes: ["Dungeon", "Ruins", "Haunted", "Crypt"],
+    ac: 12,
+    hp: 22,
+    cr: 1,
+    description: "A hateful, incorporeal spirit."
+  },
+  // --- 3. Beasts & Naturals ---
+  {
+    id: "wolf",
+    name: "Wolf",
+    type: "Beast",
+    keywords: ["wolf", "wolves", "pack", "howl", "canine", "beast"],
+    biomes: ["Forest", "Hill", "Plains", "Cave"],
+    ac: 13,
+    hp: 11,
+    cr: 0.25,
+    description: "A large predatory canine."
+  },
+  {
+    id: "giant_spider",
+    name: "Giant Spider",
+    type: "Beast",
+    keywords: ["spider", "web", "arachnid", "venom", "poison", "legs"],
+    biomes: ["Forest", "Cave", "Dungeon", "Underdark"],
+    ac: 14,
+    hp: 26,
+    cr: 1,
+    description: "A spider the size of a horse."
+  },
+  {
+    id: "black_bear",
+    name: "Black Bear",
+    type: "Beast",
+    keywords: ["bear", "beast", "claw", "maul", "ursine"],
+    biomes: ["Forest", "Cave", "Hill"],
+    ac: 11,
+    hp: 19,
+    cr: 0.5,
+    description: "A medium-sized bear."
+  },
+  {
+    id: "dire_wolf",
+    name: "Dire Wolf",
+    type: "Beast",
+    keywords: ["dire wolf", "giant wolf", "alpha", "large beast", "worg"],
+    biomes: ["Forest", "Hill", "Plains"],
+    ac: 14,
+    hp: 37,
+    cr: 1,
+    description: "An enormous wolf, primal and fierce."
+  },
+  {
+    id: "giant_rat",
+    name: "Giant Rat",
+    type: "Beast",
+    keywords: ["rat", "vermin", "rodent", "swarm", "squeak"],
+    biomes: ["Urban", "Dungeon", "Sewer", "Cave"],
+    ac: 12,
+    hp: 7,
+    cr: 0.125,
+    description: "A rat the size of a small dog."
+  },
+  // --- 4. Monstrosities & Magical ---
+  {
+    id: "cockatrice",
+    name: "Cockatrice",
+    type: "Monstrosity",
+    keywords: ["cockatrice", "bird", "lizard", "petrify", "chicken"],
+    biomes: ["Plains", "Mountain", "Road"],
+    ac: 11,
+    hp: 27,
+    cr: 0.5,
+    description: "A monstrous hybrid of lizard and bird."
+  },
+  {
+    id: "worg",
+    name: "Worg",
+    type: "Monstrosity",
+    keywords: ["worg", "monstrosity", "sentient wolf", "evil wolf"],
+    biomes: ["Plains", "Forest", "Goblin Camp"],
+    ac: 13,
+    hp: 26,
+    cr: 0.5,
+    description: "A large, evil wolf-like monster with goblin allies."
+  },
+  {
+    id: "gelatinous_cube",
+    name: "Gelatinous Cube",
+    type: "Ooze",
+    keywords: ["cube", "ooze", "jelly", "transparent", "acid", "slime"],
+    biomes: ["Dungeon", "Corridor", "Ruins"],
+    ac: 6,
+    hp: 84,
+    cr: 2,
+    description: "A transparent cube of acidic slime."
+  },
+  {
+    id: "ogre",
+    name: "Ogre",
+    type: "Giant",
+    keywords: ["ogre", "giant", "smash", "club", "huge", "lout"],
+    biomes: ["Mountain", "Cave", "Swamp", "Hill"],
+    ac: 11,
+    hp: 59,
+    cr: 2,
+    description: "A large, dim-witted giant."
+  },
+  {
+    id: "imp",
+    name: "Imp",
+    type: "Fiend",
+    keywords: ["imp", "devil", "fiend", "wings", "sting", "tiny"],
+    biomes: ["Dungeon", "Urban", "Ruins"],
+    ac: 13,
+    hp: 10,
+    cr: 1,
+    description: "A tiny, shapeshifting devil."
+  },
+  {
+    id: "rust_monster",
+    name: "Rust Monster",
+    type: "Monstrosity",
+    keywords: ["rust", "metal", "insect", "feeler", "corrode"],
+    biomes: ["Dungeon", "Cave", "Underdark"],
+    ac: 14,
+    hp: 27,
+    cr: 0.5,
+    description: "A bizarre insectoid that eats metal."
+  }
+];
+function generateEncounter(criteria) {
+  const { narration, locationType, partyLevel, partySize, difficulty = "medium" } = criteria;
+  if (!injectedDiceRoller) {
+    console.error("injectedDiceRoller not initialized in encounterTable. Call initEncounterTable first.");
+    return [];
+  }
+  const normalizedNarration = narration.toLowerCase();
+  const matchedMonsters = MonsterDatabase.filter(
+    (monster) => monster.keywords.some((k) => normalizedNarration.includes(k))
+  );
+  const biomeMonsters = MonsterDatabase.filter(
+    (monster) => monster.biomes.some((b) => locationType.toLowerCase().includes(b.toLowerCase()))
+  );
+  let selectionPool = [];
+  if (matchedMonsters.length > 0) {
+    selectionPool = matchedMonsters;
+  } else if (biomeMonsters.length > 0) {
+    selectionPool = biomeMonsters;
+  } else {
+    selectionPool = MonsterDatabase.filter((m) => m.type === "Humanoid" || m.type === "Beast");
+  }
+  let difficultyMultiplier = 1;
+  switch (difficulty) {
+    case "easy":
+      difficultyMultiplier = 0.5;
+      break;
+    case "medium":
+      difficultyMultiplier = 1;
+      break;
+    case "hard":
+      difficultyMultiplier = 1.5;
+      break;
+    case "deadly":
+      difficultyMultiplier = 2;
+      break;
+  }
+  const crBudget = Math.max(0.25, partyLevel * partySize * 0.5 * difficultyMultiplier);
+  const encounterList = [];
+  let currentCost = 0;
+  let attempts = 0;
+  while (currentCost < crBudget && attempts < 20) {
+    attempts++;
+    const affordable = selectionPool.filter((m) => m.cr <= crBudget - currentCost);
+    if (affordable.length === 0) {
+      break;
+    }
+    const roll = new injectedDiceRoller.DiceRoll(`1d${affordable.length}`).total - 1;
+    const selected = affordable[roll];
+    encounterList.push(selected);
+    currentCost += selected.cr;
+  }
+  if (encounterList.length === 0) {
+    const weakMonsters = selectionPool.filter((m) => m.cr <= 0.25);
+    if (weakMonsters.length > 0) {
+      encounterList.push(weakMonsters[0]);
+    } else {
+      encounterList.push(MonsterDatabase.find((m) => m.id === "goblin") || MonsterDatabase[0]);
+    }
+  }
+  return encounterList;
+}
+
 // src/main.tsx
 var React;
 var DndStatsCharacterUIPage = ({
@@ -11675,6 +11969,7 @@ var DndStatsPlugin = class {
     this.appUI = appUI;
     this.settings = DnDStatsSchema.parse(__spreadValues(__spreadValues({}, generateDefaultDnDStats(appLibs.rpgDiceRoller)), settings));
     React = appLibs.react;
+    initEncounterTable(appLibs.rpgDiceRoller);
     this.context.addCharacterUI(
       this.context.pluginName,
       // Changed from "D&D 5E" to this.context.pluginName
@@ -12080,6 +12375,7 @@ ${rankList}`, "2");
       battle.combatLog.push("The battle continues...");
       battle.roundNumber++;
     }
+    console.log("DEBUG: COMBAT LOG for Narration:", battle.combatLog);
     const narrationPrompt = getCombatRoundNarrationPrompt(battle.combatLog);
     return await this.appBackend.getNarration(narrationPrompt);
   }
@@ -12098,10 +12394,35 @@ ${rankList}`, "2");
     }
     const battle = this.settings.encounter;
     const attacker = battle.combatants.find((c) => c.id === action.actorId);
-    const target = battle.combatants.find((c) => c.id === action.targetId);
+    let target = battle.combatants.find((c) => c.id === action.targetId);
     if (!attacker) {
       battle.combatLog.push(`Attacker ${action.actorId} not found.`);
       return;
+    }
+    const helpfulSpells = ["healing word", "cure wounds"];
+    const harmfulSpells = ["magic missile", "fireball"];
+    const isHelpfulAction = action.actionType === "Help" || action.actionType === "CastSpell" && helpfulSpells.includes(action.spellName || "");
+    const isHarmfulAction = action.actionType === "Attack" || action.actionType === "CastSpell" && harmfulSpells.includes(action.spellName || "");
+    if (target) {
+      if (isHelpfulAction && attacker.isFriendly !== target.isFriendly) {
+        const allies = battle.combatants.filter((c) => c.isFriendly === attacker.isFriendly && canCombatantAct(c.status));
+        if (allies.length > 0) {
+          allies.sort((a, b) => a.currentHp - b.currentHp);
+          const newTarget = allies[0];
+          console.log(`DEBUG: COMBAT: Redirecting helpful action from ${attacker.id} (Target was enemy ${target.id}) to ally ${newTarget.id}.`);
+          action.targetId = newTarget.id;
+          target = newTarget;
+        }
+      } else if (isHarmfulAction && attacker.isFriendly === target.isFriendly) {
+        const enemies = battle.combatants.filter((c) => c.isFriendly !== attacker.isFriendly && canCombatantAct(c.status));
+        if (enemies.length > 0) {
+          enemies.sort((a, b) => a.currentHp - b.currentHp);
+          const newTarget = enemies[0];
+          console.log(`DEBUG: COMBAT: Redirecting harmful action from ${attacker.id} (Target was ally ${target.id}) to enemy ${newTarget.id}.`);
+          action.targetId = newTarget.id;
+          target = newTarget;
+        }
+      }
     }
     switch (action.actionType) {
       case "Attack":
@@ -12218,7 +12539,13 @@ ${rankList}`, "2");
       }
       const knownCharacterNames = context.characters.map((c) => c.name);
       const combatantsPrompt = getCombatantsPrompt(sceneNarration, context.protagonist.name || "", knownCharacterNames);
-      const combatantsLLMResponse = await this.appBackend.getObject(combatantsPrompt, CombatantsLLMSchema);
+      let combatantsLLMResponse;
+      try {
+        combatantsLLMResponse = await this.appBackend.getObject(combatantsPrompt, CombatantsLLMSchema);
+      } catch (error39) {
+        console.error("Error getting combatants from LLM, proceeding with random encounter only:", error39);
+        combatantsLLMResponse = { knownCharacters: [], newNamedCharacters: [], unnamedEnemies: { count: 0, type: "Unknown" } };
+      }
       const allCombatants = [];
       if (context.protagonist) {
         const dexterityModifier = Math.floor((PCStats.dexterity - 10) / 2);
@@ -12235,21 +12562,22 @@ ${rankList}`, "2");
           isFriendly: true
         });
       }
-      if (combatantsLLMResponse.knownCharacters) {
+      if (combatantsLLMResponse == null ? void 0 : combatantsLLMResponse.knownCharacters) {
         for (const char of combatantsLLMResponse.knownCharacters) {
-          if (context.protagonist && char.name === context.protagonist.name) {
-            continue;
-          }
+          if (context.protagonist && char.name === context.protagonist.name) continue;
           const charIndex = context.characters.findIndex((c) => c.name === char.name);
           if (charIndex !== -1) {
+            if (context.characters[charIndex].locationIndex !== context.protagonist.locationIndex) {
+              console.log(`DEBUG: Skipping ${char.name} for combat - not at current location.`);
+              continue;
+            }
             const initiativeRoll = new rpgDiceRoller.DiceRoll(`1d20`);
             allCombatants.push({
               id: char.name,
               characterIndex: charIndex,
-              currentHp: 24,
-              // Placeholder HP, ideally get from character state
-              maxHp: 24,
-              // Placeholder HP
+              currentHp: 20,
+              //TODO: Placeholder HP, ideally read from char state if we tracked it
+              maxHp: 20,
               status: "active",
               initiativeRoll: initiativeRoll.total,
               isFriendly: char.isFriendly
@@ -12257,17 +12585,16 @@ ${rankList}`, "2");
           }
         }
       }
-      if (combatantsLLMResponse.newNamedCharacters) {
+      if (combatantsLLMResponse == null ? void 0 : combatantsLLMResponse.newNamedCharacters) {
         for (const char of combatantsLLMResponse.newNamedCharacters) {
           const newChar = {
             name: char.name,
-            biography: char.description,
             gender: "male",
-            // Placeholder
+            //TODO: Default to male for now
             race: "human",
-            // Placeholder
+            //TODO: Default to human for now
+            biography: char.description,
             locationIndex: context.protagonist.locationIndex
-            // Assume same location
           };
           context.characters.push(newChar);
           const charIndex = context.characters.length - 1;
@@ -12275,41 +12602,58 @@ ${rankList}`, "2");
           allCombatants.push({
             id: char.name,
             characterIndex: charIndex,
-            currentHp: 24,
-            // Placeholder HP
-            maxHp: 24,
-            // Placeholder HP
+            currentHp: 30,
+            // Boss/Named char buffer
+            maxHp: 30,
             status: "active",
             initiativeRoll: initiativeRoll.total,
             isFriendly: char.isFriendly
           });
         }
       }
-      if (combatantsLLMResponse.unnamedEnemies && combatantsLLMResponse.unnamedEnemies.count > 0) {
-        for (let i = 0; i < combatantsLLMResponse.unnamedEnemies.count; i++) {
-          const enemyName = `${combatantsLLMResponse.unnamedEnemies.type} ${i + 1}`;
-          const enemyChar = {
-            name: enemyName,
-            gender: "male",
-            race: "monster",
-            biography: `A generic ${combatantsLLMResponse.unnamedEnemies.type}.`,
-            locationIndex: context.protagonist.locationIndex
-          };
-          context.characters.push(enemyChar);
-          const charIndex = context.characters.length - 1;
-          const initiativeRoll = new rpgDiceRoller.DiceRoll(`1d20`);
-          allCombatants.push({
-            id: enemyName,
-            characterIndex: charIndex,
-            currentHp: 8,
-            // Placeholder HP
-            maxHp: 8,
-            // Placeholder HP
-            status: "active",
-            initiativeRoll: initiativeRoll.total,
-            isFriendly: false
-          });
-        }
+      const currentLocation = context.locations[context.protagonist.locationIndex];
+      const biome = currentLocation.type || "road";
+      let difficulty = "medium";
+      const lookingForTrouble = action && /attack|hunt|raid|provoke|slay|kill|search/i.test(action);
+      if (lookingForTrouble) {
+        difficulty = "hard";
+        console.log("DEBUG: Player is looking for trouble. Scaling difficulty to Hard.");
+      }
+      const monsters = generateEncounter({
+        narration: sceneNarration,
+        locationType: biome,
+        partyLevel: PCStats.dndLevel,
+        partySize: 1,
+        // Future: calculate based on friendly combatants present
+        difficulty
+      });
+      console.log(`DEBUG: Generated Encounter: ${monsters.map((m) => m.name).join(", ")} based on narration: "${sceneNarration.substring(0, 50)}..."`);
+      for (let i = 0; i < monsters.length; i++) {
+        const m = monsters[i];
+        const countOfType = monsters.filter((mon) => mon.name === m.name).length;
+        const indexInType = monsters.slice(0, i).filter((mon) => mon.name === m.name).length + 1;
+        const enemyName = countOfType > 1 ? `${m.name} ${indexInType}` : m.name;
+        const enemyChar = {
+          name: enemyName,
+          gender: "male",
+          //TODO: Default to male for now
+          race: "monster",
+          //TODO: Default to monster for now, should use m.type if available
+          biography: "Monster Type: " + m.type + " - Description: " + m.description,
+          locationIndex: context.protagonist.locationIndex
+        };
+        context.characters.push(enemyChar);
+        const charIndex = context.characters.length - 1;
+        const initiativeRoll = new rpgDiceRoller.DiceRoll("1d20").total;
+        allCombatants.push({
+          id: enemyName,
+          characterIndex: charIndex,
+          currentHp: m.hp,
+          maxHp: m.hp,
+          status: "active",
+          initiativeRoll,
+          isFriendly: false
+        });
       }
       allCombatants.sort((a, b) => b.initiativeRoll - a.initiativeRoll);
       PCStats.encounter = {

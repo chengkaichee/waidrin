@@ -17,7 +17,18 @@
  *    - Morale systems (enemies fleeing when leader falls).
  */
 
-import * as RpgDiceRoller from '@dice-roller/rpg-dice-roller';
+// Module-level variable for the injected DiceRoller
+let injectedDiceRoller: typeof import('@dice-roller/rpg-dice-roller');
+
+/**
+ * Initializes the encounter table module with the RpgDiceRoller instance.
+ * This must be called before generating encounters.
+ * @param injectedRpgDiceRoller - The RpgDiceRoller instance from the app.
+ */
+export function initEncounterTable(injectedRpgDiceRoller: typeof import('@dice-roller/rpg-dice-roller')) {
+  console.log("DEBUG: initEncounterTable called with injectedRpgDiceRoller.");
+  injectedDiceRoller = injectedRpgDiceRoller;
+}
 
 export interface MonsterStatBlock {
   id: string;          // Unique ID/Key
@@ -199,6 +210,11 @@ export interface EncounterCriteria {
 export function generateEncounter(criteria: EncounterCriteria): MonsterStatBlock[] {
   const { narration, locationType, partyLevel, partySize, difficulty = "medium" } = criteria;
   
+  if (!injectedDiceRoller) {
+    console.error("injectedDiceRoller not initialized in encounterTable. Call initEncounterTable first.");
+    return [];
+  }
+
   const normalizedNarration = narration.toLowerCase();
   
   // 1. Identify Keyword Matches
@@ -257,7 +273,7 @@ export function generateEncounter(criteria: EncounterCriteria): MonsterStatBlock
     }
 
     // Pick random monster
-    const roll = new RpgDiceRoller.DiceRoll(`1d${affordable.length}`).total - 1;
+    const roll = new injectedDiceRoller.DiceRoll(`1d${affordable.length}`).total - 1;
     const selected = affordable[roll];
     
     encounterList.push(selected);

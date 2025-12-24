@@ -716,7 +716,7 @@ export function getCombatRoundNarrationPrompt(combatLog: string[]): Prompt {
 
     Combine these events into a single, cohesive paragraph. Describe the actions, reactions, and outcomes in a way that brings the scene to life. 
     Focus on vivid descriptions and the flow of battle. Do not break it into separate lines or bullet points.
-    Your entire response must be a single paragraph.`,
+    Your entire response must be a single paragraph. The last line of your response must be the last line from the combat log.`,
  };
 }
 
