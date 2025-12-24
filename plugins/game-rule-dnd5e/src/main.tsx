@@ -19,6 +19,7 @@ import type { useShallow } from 'zustand/shallow';
 import { DnDStats, generateDefaultDnDStats, DnDClassData, DnDStatsSchema, resolveCheck as getResolveCheck, Combatant, canCombatantAct, CombatAction, CombatActionSchema, CombatRoundActionsSchema, CheckResult, PlotType } from "./pluginData";
 import { getBackstory, modifyProtagonistPromptForDnd, getChecksPrompt, getConsequenceGuidancePrompt, getDndNarrationGuidance, getLocationChangePrompt, getCombatantsPrompt, getPlayerCombatActionPrompt, getCombatRoundActionsPrompt, getCombatRoundNarrationPrompt, assignPlotType } from "./pluginPrompt";
 import { resolveSpell } from "./pluginSpells";
+import { generateEncounter } from "./encounterTable";
 import * as z from "zod/v4";
 
 import type { Character, State, CheckResolutionResult } from "@/lib/state"; // Import Character and State
@@ -1086,7 +1087,10 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
         if (parsedPlotType === "combat" && !this.settings.encounter) {
           console.log("DEBUG: @getActions detected combat, calling setGlobalState to initialize.");          
           // Call setGlobalState to get a writable draft and then call handleConsequence.
-          await this.appStateManager.setGlobalState(async (draft) => {
+          // CRITICAL FIX: Do not await this. The engine currently holds the state lock. 
+          // Awaiting here causes a deadlock. By calling void, we queue this update to happen 
+          // immediately after the engine releases the lock.
+          void this.appStateManager.setGlobalState(async (draft) => {
             await this.handleConsequence("initiative_triggered", draft as WritableDraft<State>, [], "Combat started from narration");
           });
 

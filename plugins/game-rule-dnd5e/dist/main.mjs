@@ -11248,11 +11248,15 @@ function getPlayerCombatActionPrompt(playerAction, battle, protagonistId) {
     system: `You are a helpful AI assistant for a D&D 5e game. Your task is to parse the player's natural language input into a structured CombatAction JSON object.
     You must ensure the 'actorId' is always "${protagonistId}".
     
-    If the user's input is a valid natural language sentence but is NOT a valid combat action in the current context (e.g., 'I want to go fishing') OR is too vague (e.g. just 'attack' without target), you MUST return an 'actionType' of 'Other' and start the 'description' field with 'INVALID_ACTION: ' followed by a brief reason.
-    
+    **Critical Instructions:**
+    1. **Vague Commands:** If the input is vague (e.g., "attack", "cast a spell"), you MUST infer the most logical target. For "Attack", pick an active, non-friendly combatant. For "CastSpell" with a helpful spell, pick an injured, friendly combatant.
+    2. **Target Requirement:** If the inferred actionType is "Attack", "CastSpell", "Help", or "UseObject", you MUST include a valid 'targetId' from the list of combatants.
+    3. **Spell Requirement:** If actionType is "CastSpell", you MUST include a 'spellName'.
+    4. If the user's input is a valid natural language sentence but is NOT a valid combat action in the current context (e.g., 'I want to go fishing') OR is too vague (e.g. just 'attack' without target), you MUST return an 'actionType' of 'Other' and start the 'description' field with 'INVALID_ACTION: ' followed by a brief reason.
+    ------    
     Combatants in the scene:
     ${combatantStates}
-    `,
+    ------ `,
     user: `The player has input: "${playerAction}".
     Parse this into a valid JSON object conforming to the following schema:
     ${JSON.stringify(jsonSchema, null, 2)}`
@@ -11913,7 +11917,6 @@ ${combatNarration}`;
           parsingDone = true;
         } catch (error39) {
           const errorMessage = error39.message || "We were unable to parse your last prompt into a valid D&D action.";
-          this.appUI.showError(errorMessage);
           const choice = window.prompt(
             `${errorMessage}
 
@@ -12342,7 +12345,7 @@ ${rankList}`, "2");
         console.log(`DEBUG: @getActions PlotType updated to: ${this.settings.plotType} in ${duration3} seconds`);
         if (parsedPlotType === "combat" && !this.settings.encounter) {
           console.log("DEBUG: @getActions detected combat, calling setGlobalState to initialize.");
-          await this.appStateManager.setGlobalState(async (draft) => {
+          void this.appStateManager.setGlobalState(async (draft) => {
             await this.handleConsequence("initiative_triggered", draft, [], "Combat started from narration");
           });
           return ["Attack", "Defend", "Cast Spell", "Use Item", "Flee"];

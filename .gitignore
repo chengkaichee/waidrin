@@ -64,3 +64,4 @@ setupTests.ts
 *.test.ts*
 playwright-report/
 test-results/
+*.pdf
