@@ -25,9 +25,10 @@ export interface Backend {
    * @description Retrieves a narration from the language model based on the provided prompt.
    * @param {Prompt} prompt - The prompt for generating narration.
    * @param {TokenCallback} [onToken] - Optional callback for token updates during streaming.
+   * @param {number} [maxTokens] - Optional: The maximum number of tokens to generate.
    * @returns {Promise<string>} A promise that resolves to the generated narration string.
    */
-  getNarration(prompt: Prompt, onToken?: TokenCallback): Promise<string>;
+  getNarration(prompt: Prompt, onToken?: TokenCallback, maxTokens?: number): Promise<string>;
 
   /**
    * @method getObject
@@ -37,12 +38,14 @@ export interface Backend {
    * @param {Prompt} prompt - The prompt for generating the JSON object.
    * @param {Schema} schema - The Zod schema to validate the generated object against.
    * @param {TokenCallback} [onToken] - Optional callback for token updates during streaming.
+   * @param {number} [maxTokens] - Optional: The maximum number of tokens to generate.
    * @returns {Promise<Type>} A promise that resolves to the parsed and validated object.
    */
   getObject<Schema extends z.ZodType, Type extends z.infer<Schema>>(
     prompt: Prompt,
     schema: Schema,
     onToken?: TokenCallback,
+    maxTokens?: number
   ): Promise<Type>;
 
   /**
@@ -127,12 +130,8 @@ export class DefaultBackend implements Backend {
             { role: "system", content: prompt.system },
             { role: "user", content: prompt.user },
           ],
-          // These are hardcoded because the required number depends on
-          // what is being prompted for, which is also hardcoded.
+          // These are default hardcoded limits that can be overridden by params.
           max_tokens: 4096,
-          // Both variants need to be provided, as newer OpenAI models
-          // don't support max_tokens, while some inference engines don't
-          // support max_completion_tokens.
           max_completion_tokens: 4096,
           ...params,
         },
@@ -223,10 +222,18 @@ export class DefaultBackend implements Backend {
    * @description Retrieves a narration using the default narration parameters.
    * @param {Prompt} prompt - The prompt for narration.
    * @param {TokenCallback} [onToken] - Optional callback for token updates.
+   * @param {number} [maxTokens] - Optional: The maximum number of tokens to generate.
    * @returns {Promise<string>} A promise that resolves to the generated narration.
    */
-  async getNarration(prompt: Prompt, onToken?: TokenCallback): Promise<string> {
-    return await this.getResponse(prompt, this.getSettings().narrationParams, onToken);
+  async getNarration(prompt: Prompt, onToken?: TokenCallback, maxTokens?: number): Promise<string> {
+    const params: Record<string, unknown> = {
+      ...this.getSettings().narrationParams,
+    };
+    if (maxTokens) {
+      params.max_tokens = maxTokens;
+      params.max_completion_tokens = maxTokens;
+    }
+    return await this.getResponse(prompt, params, onToken);
   }
 
   /**
@@ -237,28 +244,31 @@ export class DefaultBackend implements Backend {
    * @param {Prompt} prompt - The prompt for generating the object.
    * @param {Schema} schema - The Zod schema for validation.
    * @param {TokenCallback} [onToken] - Optional callback for token updates.
+   * @param {number} [maxTokens] - Optional: The maximum number of tokens to generate.
    * @returns {Promise<Type>} A promise that resolves to the parsed and validated object.
    */
   async getObject<Schema extends z.ZodType, Type extends z.infer<Schema>>(
     prompt: Prompt,
     schema: Schema,
     onToken?: TokenCallback,
+    maxTokens?: number
   ): Promise<Type> {
-    const response = await this.getResponse(
-      prompt,
-      {
-        ...this.getSettings().generationParams,
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "schema",
-            strict: true,
-            schema: z.toJSONSchema(schema),
-          },
+    const params: Record<string, unknown> = {
+      ...this.getSettings().generationParams,
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "schema",
+          strict: true,
+          schema: z.toJSONSchema(schema),
         },
       },
-      onToken,
-    );
+    };
+    if (maxTokens) {
+      params.max_tokens = maxTokens;
+      params.max_completion_tokens = maxTokens;
+    }
+    const response = await this.getResponse(prompt, params, onToken);
 
     return schema.parse(JSON.parse(response)) as Type;
   }

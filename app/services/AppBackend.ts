@@ -8,11 +8,12 @@ import type * as z from "zod/v4";
  */
 export interface IAppBackend {
   getBackend(): Backend;
-  getNarration(prompt: Prompt, onToken?: TokenCallback): Promise<string>;
+  getNarration(prompt: Prompt, onToken?: TokenCallback, maxTokens?: number): Promise<string>;
   getObject<Schema extends z.ZodType, Type extends z.infer<Schema>>(
     prompt: Prompt,
     schema: Schema,
     onToken?: TokenCallback,
+    maxTokens?: number
   ): Promise<Type>;
   abort(): void;
   isAbortError(error: unknown): boolean;
@@ -29,16 +30,17 @@ export class AppBackend implements IAppBackend {
     return this.getBackendFn();
   }
 
-  async getNarration(prompt: Prompt, onToken?: TokenCallback): Promise<string> {
-    return this.getBackendFn().getNarration(prompt, onToken);
+  async getNarration(prompt: Prompt, onToken?: TokenCallback, maxTokens?: number): Promise<string> {
+    return this.getBackendFn().getNarration(prompt, onToken, maxTokens);
   }
 
   async getObject<Schema extends z.ZodType, Type extends z.infer<Schema>>(
     prompt: Prompt,
     schema: Schema,
     onToken?: TokenCallback,
+    maxTokens?: number
   ): Promise<Type> {
-    return this.getBackendFn().getObject(prompt, schema, onToken);
+    return this.getBackendFn().getObject(prompt, schema, onToken, maxTokens);
   }
 
   abort(): void {

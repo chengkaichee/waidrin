@@ -11991,7 +11991,7 @@ var DndStatsPlugin = class {
               try {
                 const generatedBackstory = await this.appBackend.getNarration(prompt, (token, count) => {
                   this.appUI.updateProgress("Generating Backstory", "Please wait while your character is going through early life...", count, true);
-                });
+                }, 300);
                 finalSettings = __spreadProps(__spreadValues({}, newSettings), { backstory: generatedBackstory });
                 this.appUI.updateProgress("Backstory Generated", "Your character's history is ready!", -1, false);
                 console.log("DEBUG: Plugin: Backstory Generated.");
@@ -12045,7 +12045,7 @@ var DndStatsPlugin = class {
         modifiers: array(string2()).optional()
       });
       const CheckDefinitionsArraySchema = array(CheckDefinitionSchema);
-      let checks = await this.appBackend.getObject(checksPrompt, CheckDefinitionsArraySchema);
+      let checks = await this.appBackend.getObject(checksPrompt, CheckDefinitionsArraySchema, void 0, 250);
       if (PCStats.plotType === "combat") {
         checks = checks.filter((check2) => check2.type !== "initiative");
       }
@@ -12205,7 +12205,7 @@ ${combatNarration}`;
       while (!parsingDone) {
         try {
           const prompt = getPlayerCombatActionPrompt(currentActionInput, battle, protagonistId);
-          playerActionObject = await this.appBackend.getObject(prompt, CombatActionSchema);
+          playerActionObject = await this.appBackend.getObject(prompt, CombatActionSchema, void 0, 150);
           if (playerActionObject.actionType === "Other" && playerActionObject.description.startsWith("INVALID_ACTION:")) {
             throw new Error(playerActionObject.description);
           }
@@ -12320,7 +12320,7 @@ ${rankList}`, "2");
     let npcActions = [];
     try {
       const TempCombatRoundActionsResponseSchema = object({ actions: CombatRoundActionsSchema });
-      const combatRoundResponse = await this.appBackend.getObject(npcPrompt, TempCombatRoundActionsResponseSchema);
+      const combatRoundResponse = await this.appBackend.getObject(npcPrompt, TempCombatRoundActionsResponseSchema, void 0, 500);
       npcActions = combatRoundResponse.actions;
       console.log("DEBUG: NPC Actions received from LLM:", npcActions);
     } catch (error39) {
@@ -12362,8 +12362,11 @@ ${rankList}`, "2");
       const combatant = battle.combatants.find((c) => c.id === action.actorId);
       if (combatant && canCombatantAct(combatant.status)) {
         this.resolveCombatAction(action, context);
+      } else if (combatant) {
+        console.log(`DEBUG: COMBAT: Skipping action for ${combatant.id} as they are no longer active (Status: ${combatant.status}).`);
       }
     }
+    const protagonistCombatant = battle.combatants.find((c) => c.characterIndex === -1);
     const remainingEnemies = battle.combatants.filter((c) => !c.isFriendly && canCombatantAct(c.status));
     const remainingFriendlies = battle.combatants.filter((c) => c.isFriendly && canCombatantAct(c.status));
     if (remainingEnemies.length === 0) {
@@ -12374,8 +12377,11 @@ ${rankList}`, "2");
       battle.combatLog.push("All friendlies defeated! Game over.");
       this.settings.plotType = "general";
       this.settings.encounter = void 0;
+    } else if (protagonistCombatant && !canCombatantAct(protagonistCombatant.status)) {
+      battle.combatLog.push(`${protagonistCombatant.id} has been defeated. The party must act to save the Player! The next round of battle continues...`);
+      battle.roundNumber++;
     } else {
-      battle.combatLog.push("The battle continues...");
+      battle.combatLog.push("The next round of battle continues...");
       battle.roundNumber++;
     }
     console.log("DEBUG: COMBAT LOG for Narration:", battle.combatLog);
@@ -12546,7 +12552,7 @@ ${rankList}`, "2");
       const combatantsPrompt = getCombatantsPrompt(sceneNarration, context.protagonist.name || "", knownCharacterNames);
       let combatantsLLMResponse;
       try {
-        combatantsLLMResponse = await this.appBackend.getObject(combatantsPrompt, CombatantsLLMSchema);
+        combatantsLLMResponse = await this.appBackend.getObject(combatantsPrompt, CombatantsLLMSchema, void 0, 1024);
       } catch (error39) {
         console.error("Error getting combatants from LLM, proceeding with random encounter only:", error39);
         combatantsLLMResponse = { knownCharacters: [], newNamedCharacters: [], unnamedEnemies: { count: 0, type: "Unknown" } };
@@ -12680,6 +12686,10 @@ ${rankList}`, "2");
       return [];
     }
     if (this.settings.plotType === "combat" && this.settings.encounter) {
+      const protagonistCombatant = this.settings.encounter.combatants.find((c) => c.characterIndex === -1);
+      if (protagonistCombatant && !canCombatantAct(protagonistCombatant.status)) {
+        return ["Party retreat with bodies", "Party complete objective", "Party help the fallen"];
+      }
       return ["Attack", "Defend", "Cast Spell", "Use Item", "Flee"];
     }
     const latestNarrationEvent = [...this.appStateManager.getGlobalState().events].reverse().find((event) => event.type === "narration");
@@ -12687,7 +12697,7 @@ ${rankList}`, "2");
       const plotTypePrompt = assignPlotType(latestNarrationEvent.text, Object.values(PlotType.enum));
       try {
         const startTime = Date.now();
-        const llmResponse = await this.appBackend.getNarration(plotTypePrompt);
+        const llmResponse = await this.appBackend.getNarration(plotTypePrompt, void 0, 100);
         const parsedPlotType = PlotType.parse(llmResponse.trim());
         const endTime = Date.now();
         const duration3 = (endTime - startTime) / 1e3;

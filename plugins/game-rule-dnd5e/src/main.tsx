@@ -288,7 +288,7 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
             try {
               const generatedBackstory = await this.appBackend!.getNarration(prompt, (token, count) => {
                 this.appUI!.updateProgress("Generating Backstory", "Please wait while your character is going through early life...", count, true);
-              }); // Approximately 300 words
+              }, 300); // Backstory limit: 300 tokens
 
               finalSettings = { ...newSettings, backstory: generatedBackstory };
               this.appUI!.updateProgress("Backstory Generated", "Your character's history is ready!", -1, false);
@@ -353,7 +353,7 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
       });
       const CheckDefinitionsArraySchema = z.array(CheckDefinitionSchema);
 
-      let checks = await this.appBackend!.getObject(checksPrompt, CheckDefinitionsArraySchema);
+      let checks = await this.appBackend!.getObject(checksPrompt, CheckDefinitionsArraySchema, undefined, 250);
 
       // Filter out initiative checks if already in combat
       if (PCStats.plotType === "combat") {
@@ -564,7 +564,7 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
             // T006: Implement the try/catch parsing block
             try {
                 const prompt = getPlayerCombatActionPrompt(currentActionInput, battle, protagonistId);
-                playerActionObject = await this.appBackend.getObject(prompt, CombatActionSchema);
+                playerActionObject = await this.appBackend.getObject(prompt, CombatActionSchema, undefined, 150);
                 
                 // Validation: Check if INVALID_ACTION flag returned by LLM
                 if (playerActionObject.actionType === 'Other' && playerActionObject.description.startsWith("INVALID_ACTION:")) {
@@ -697,7 +697,7 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
     let npcActions: CombatAction[] = [];
     try {
       const TempCombatRoundActionsResponseSchema = z.object({ actions: CombatRoundActionsSchema });
-      const combatRoundResponse = await this.appBackend.getObject(npcPrompt, TempCombatRoundActionsResponseSchema);
+      const combatRoundResponse = await this.appBackend.getObject(npcPrompt, TempCombatRoundActionsResponseSchema, undefined, 500);
       npcActions = combatRoundResponse.actions;
       console.log("DEBUG: NPC Actions received from LLM:", npcActions);
     } catch (error) {
@@ -746,13 +746,17 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
 
     // Process all actions
     for (const action of allActions) {
+        // Re-fetch the combatant state from the latest draft to ensure we have the most current status
         const combatant = battle.combatants.find(c => c.id === action.actorId);
         if (combatant && canCombatantAct(combatant.status)) {
             this.resolveCombatAction(action, context);
+        } else if (combatant) {
+            console.log(`DEBUG: COMBAT: Skipping action for ${combatant.id} as they are no longer active (Status: ${combatant.status}).`);
         }
     }
 
     // Check for combat end conditions
+    const protagonistCombatant = battle.combatants.find(c => c.characterIndex === -1);
     const remainingEnemies = battle.combatants.filter(c => !c.isFriendly && canCombatantAct(c.status));
     const remainingFriendlies = battle.combatants.filter(c => c.isFriendly && canCombatantAct(c.status));
 
@@ -764,8 +768,13 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
         battle.combatLog.push("All friendlies defeated! Game over.");
         this.settings.plotType = "general";
         this.settings.encounter = undefined;
+    } else if (protagonistCombatant && !canCombatantAct(protagonistCombatant.status)) {
+        battle.combatLog.push(`${protagonistCombatant.id} has been defeated. The party must act to save the Player! The next round of battle continues...`);
+        // We don't automatically end combat here to allow for "Post-Defeat" narrative/party actions
+        // but getActions will now prevent further standard combat commands from the player.
+        battle.roundNumber++;
     } else {
-        battle.combatLog.push("The battle continues...");
+        battle.combatLog.push("The next round of battle continues...");
         battle.roundNumber++;
     }
 
@@ -994,7 +1003,7 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
       
       let combatantsLLMResponse;
       try {
-        combatantsLLMResponse = await this.appBackend.getObject(combatantsPrompt, CombatantsLLMSchema);
+        combatantsLLMResponse = await this.appBackend.getObject(combatantsPrompt, CombatantsLLMSchema, undefined, 1024);
       } catch (error) {
         console.error("Error getting combatants from LLM, proceeding with random encounter only:", error);
         combatantsLLMResponse = { knownCharacters: [], newNamedCharacters: [], unnamedEnemies: { count: 0, type: "Unknown" } };
@@ -1154,6 +1163,11 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
 
     // If combat is properly initiated, return combat actions.
     if (this.settings.plotType === "combat" && this.settings.encounter) {
+      // PROTAGONIST STATUS CHECK: If defeated, don't show combat actions
+      const protagonistCombatant = this.settings.encounter.combatants.find(c => c.characterIndex === -1);
+      if (protagonistCombatant && !canCombatantAct(protagonistCombatant.status)) {
+          return ["Party retreat with bodies", "Party complete objective", "Party help the fallen"];
+      }
       return ["Attack", "Defend", "Cast Spell", "Use Item", "Flee"];
     }
 
@@ -1162,7 +1176,7 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
       const plotTypePrompt = assignPlotType(latestNarrationEvent.text, Object.values(PlotType.enum));
       try {
         const startTime = Date.now(); // DEBUG: Start timing
-        const llmResponse = await this.appBackend.getNarration(plotTypePrompt);
+        const llmResponse = await this.appBackend.getNarration(plotTypePrompt, undefined, 100);
         const parsedPlotType = PlotType.parse(llmResponse.trim());
         const endTime = Date.now(); // DEBUG: End timing
         const duration = (endTime - startTime) / 1000; // DEBUG: duration in seconds

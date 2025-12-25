@@ -95,7 +95,7 @@ const RawCharacter = schemas.Character.omit({ locationIndex: true });
  * @returns {Promise<boolean>} A promise that resolves to `true` if the response is "yes", `false` otherwise.
  */
 async function getBoolean(prompt: Prompt, onToken?: (token: string, count: number) => void): Promise<boolean> {
-  return (await getBackend().getObject(prompt, z.enum(["yes", "no"]), onToken)) === "yes";
+  return (await getBackend().getObject(prompt, z.enum(["yes", "no"]), onToken, 10)) === "yes";
 }
 
 /**
@@ -288,7 +288,7 @@ export async function next(
         // Call the throttled `updateState` function to commit partial narration
         // to the global state, enabling real-time streaming in the UI.
         updateState();
-      });
+      }, 1024); // Dynamic: 1024 tokens for final narration
 
       // Initialize a Set to store unique indices of characters referenced in the narration.
       const referencedCharacterIndices = new Set<number>();
