@@ -11393,7 +11393,7 @@ function getCombatRoundNarrationPrompt(combatLog) {
 
     Combine these events into a single, cohesive paragraph. Describe the actions, reactions, and outcomes in a way that brings the scene to life. 
     Focus on vivid descriptions and the flow of battle. Do not break it into separate lines or bullet points.
-    Your entire response must be a single paragraph. The last line of your response must be the last line from the combat log.`
+    Your entire response must be a single paragraph.`
   };
 }
 function assignPlotType(narrationText, plotTypes) {
@@ -12322,8 +12322,11 @@ ${rankList}`, "2");
       const TempCombatRoundActionsResponseSchema = object({ actions: CombatRoundActionsSchema });
       const combatRoundResponse = await this.appBackend.getObject(npcPrompt, TempCombatRoundActionsResponseSchema);
       npcActions = combatRoundResponse.actions;
+      console.log("DEBUG: NPC Actions received from LLM:", npcActions);
     } catch (error39) {
-      console.error("Error getting NPC actions from LLM, using fallback.", error39);
+      if (error39 instanceof ZodError) {
+        console.error("DEBUG: Zod validation issues for NPC Actions:", JSON.stringify(error39.format(), null, 2));
+      }
       npcActions = [];
     }
     const filteredNpcActions = npcActions.filter((action) => action.actorId !== protagonistId);
@@ -12376,8 +12379,10 @@ ${rankList}`, "2");
       battle.roundNumber++;
     }
     console.log("DEBUG: COMBAT LOG for Narration:", battle.combatLog);
+    const lastLine = battle.combatLog[battle.combatLog.length - 1] || "";
     const narrationPrompt = getCombatRoundNarrationPrompt(battle.combatLog);
-    return await this.appBackend.getNarration(narrationPrompt);
+    const narration = await this.appBackend.getNarration(narrationPrompt);
+    return narration + "\n\n" + lastLine;
   }
   /**
    * @method resolveCombatAction

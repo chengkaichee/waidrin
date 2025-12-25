@@ -699,8 +699,11 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
       const TempCombatRoundActionsResponseSchema = z.object({ actions: CombatRoundActionsSchema });
       const combatRoundResponse = await this.appBackend.getObject(npcPrompt, TempCombatRoundActionsResponseSchema);
       npcActions = combatRoundResponse.actions;
+      console.log("DEBUG: NPC Actions received from LLM:", npcActions);
     } catch (error) {
-      console.error("Error getting NPC actions from LLM, using fallback.", error);
+      if (error instanceof z.ZodError) {
+        console.error("DEBUG: Zod validation issues for NPC Actions:", JSON.stringify(error.format(), null, 2));
+      }
       npcActions = []; 
     }
 
@@ -767,8 +770,10 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
     }
 
     console.log("DEBUG: COMBAT LOG for Narration:", battle.combatLog);
+    const lastLine = battle.combatLog[battle.combatLog.length - 1] || "";
     const narrationPrompt = getCombatRoundNarrationPrompt(battle.combatLog);
-    return await this.appBackend.getNarration(narrationPrompt);
+    const narration = await this.appBackend.getNarration(narrationPrompt);
+    return narration + "\n\n" + lastLine;
   }
 
   /**
