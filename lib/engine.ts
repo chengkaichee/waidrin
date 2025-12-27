@@ -288,7 +288,7 @@ export async function next(
         // Call the throttled `updateState` function to commit partial narration
         // to the global state, enabling real-time streaming in the UI.
         updateState();
-      }, 1024); // Dynamic: 1024 tokens for final narration
+      }, 2048); // Dynamic: 2048 tokens for final narration
 
       // Initialize a Set to store unique indices of characters referenced in the narration.
       const referencedCharacterIndices = new Set<number>();

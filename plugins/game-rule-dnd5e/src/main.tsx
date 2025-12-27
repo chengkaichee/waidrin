@@ -769,12 +769,12 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
         this.settings.plotType = "general";
         this.settings.encounter = undefined;
     } else if (protagonistCombatant && !canCombatantAct(protagonistCombatant.status)) {
-        battle.combatLog.push(`${protagonistCombatant.id} has been defeated. The party must act to save the Player! The next round of battle continues...`);
+        battle.combatLog.push(`${protagonistCombatant.id} has been defeated. The party must act to save the Player! The next round of battle continues.`);
         // We don't automatically end combat here to allow for "Post-Defeat" narrative/party actions
         // but getActions will now prevent further standard combat commands from the player.
         battle.roundNumber++;
     } else {
-        battle.combatLog.push("The next round of battle continues...");
+        battle.combatLog.push("The next round of battle continues.");
         battle.roundNumber++;
     }
 
@@ -1003,7 +1003,7 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
       
       let combatantsLLMResponse;
       try {
-        combatantsLLMResponse = await this.appBackend.getObject(combatantsPrompt, CombatantsLLMSchema, undefined, 1024);
+        combatantsLLMResponse = await this.appBackend.getObject(combatantsPrompt, CombatantsLLMSchema); //Set to Unlimited for now was: , undefined, 1024);
       } catch (error) {
         console.error("Error getting combatants from LLM, proceeding with random encounter only:", error);
         combatantsLLMResponse = { knownCharacters: [], newNamedCharacters: [], unnamedEnemies: { count: 0, type: "Unknown" } };
@@ -1166,7 +1166,7 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
       // PROTAGONIST STATUS CHECK: If defeated, don't show combat actions
       const protagonistCombatant = this.settings.encounter.combatants.find(c => c.characterIndex === -1);
       if (protagonistCombatant && !canCombatantAct(protagonistCombatant.status)) {
-          return ["Party retreat with bodies", "Party complete objective", "Party help the fallen"];
+          return ["Party retreat with fallen members", "Party complete objective ignoring fallen members", "Party help revive fallen members"];
       }
       return ["Attack", "Defend", "Cast Spell", "Use Item", "Flee"];
     }

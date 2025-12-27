@@ -10885,14 +10885,14 @@ function getBackstory(stats, pc) {
     And the following descriptive guidance from D&D 5e rules:
     ${coreAttributesContent}
 
-    Provide a concise, narrative guiding description of the character's core attributes, incorporating descriptive interpretations. 
+    In 300 words provide a high level, narrative guiding description of the character's core attributes, incorporating descriptive interpretations. 
     Focus on how these attributes would manifest in the character's personality, physical presence, and abilities. 
     Based on the pattern of the attributes add a couple of backstory to explain the outlier attributes tied to the gender and race during upbringing and the eventual growth based on their level to their class and subclass (if applicable). 
     Provide a current physical description of the character based on their attributes and backstory.
 
     DO NOT repeat the numerical values of the attributes in your description.
     DO NOT include numerical modifiers or numbers in your description.
-    Your entire response must be no more than 420 words. Do not exceed this limit. If your answer would be longer, stop at exactly 420 words and do not continue. Do not mention the word count in your answer.`
+    Your entire response must be no more than 300 words. Do not exceed this limit, never mention the word count in your answer.`
   };
 }
 var coreSkillsAndDifficultyCheckContent = `
@@ -11142,7 +11142,7 @@ ${checkResult.join("\n")}` : "No specific checks were needed for this action.";
   };
 }
 var dndRulesDMStyle = "Ensure your narration aligns with D&D 5e fantasy themes, character abilities, and typical role-playing scenarios that the famous DM Matt Mercer would narrate. Always tell the scene based on because the player did something therefore this next challenge (e.g. Combat is very obvious consequence, a new obstacle, a change in circumstances) happen, do not end the narration with how the character is feeling or how readily they feel.";
-var dndRulesCombat = "Narrate this as a dynamic combat scene, focusing on action and character reactions, adhering to D&D 5e combat rules.";
+var dndRulesCombat = "Narrate this as a dynamic combat scene, focusing on action and character reactions, adhering to D&D 5e combat rules. Do NOT narrate the protagonist leaving the current location or the scene ending, narrate the fight in the heat of combat.";
 function getDndNarrationGuidance(eventType) {
   let guidance = "";
   if (eventType === "combat") {
@@ -12378,10 +12378,10 @@ ${rankList}`, "2");
       this.settings.plotType = "general";
       this.settings.encounter = void 0;
     } else if (protagonistCombatant && !canCombatantAct(protagonistCombatant.status)) {
-      battle.combatLog.push(`${protagonistCombatant.id} has been defeated. The party must act to save the Player! The next round of battle continues...`);
+      battle.combatLog.push(`${protagonistCombatant.id} has been defeated. The party must act to save the Player! The next round of battle continues.`);
       battle.roundNumber++;
     } else {
-      battle.combatLog.push("The next round of battle continues...");
+      battle.combatLog.push("The next round of battle continues.");
       battle.roundNumber++;
     }
     console.log("DEBUG: COMBAT LOG for Narration:", battle.combatLog);
@@ -12552,7 +12552,7 @@ ${rankList}`, "2");
       const combatantsPrompt = getCombatantsPrompt(sceneNarration, context.protagonist.name || "", knownCharacterNames);
       let combatantsLLMResponse;
       try {
-        combatantsLLMResponse = await this.appBackend.getObject(combatantsPrompt, CombatantsLLMSchema, void 0, 1024);
+        combatantsLLMResponse = await this.appBackend.getObject(combatantsPrompt, CombatantsLLMSchema);
       } catch (error39) {
         console.error("Error getting combatants from LLM, proceeding with random encounter only:", error39);
         combatantsLLMResponse = { knownCharacters: [], newNamedCharacters: [], unnamedEnemies: { count: 0, type: "Unknown" } };
@@ -12688,7 +12688,7 @@ ${rankList}`, "2");
     if (this.settings.plotType === "combat" && this.settings.encounter) {
       const protagonistCombatant = this.settings.encounter.combatants.find((c) => c.characterIndex === -1);
       if (protagonistCombatant && !canCombatantAct(protagonistCombatant.status)) {
-        return ["Party retreat with bodies", "Party complete objective", "Party help the fallen"];
+        return ["Party retreat with fallen members", "Party complete objective ignoring fallen members", "Party help revive fallen members"];
       }
       return ["Attack", "Defend", "Cast Spell", "Use Item", "Flee"];
     }

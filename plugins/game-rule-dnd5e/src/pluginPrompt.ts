@@ -424,7 +424,7 @@ export function getConsequenceGuidancePrompt(sceneNarration: string, actionText:
 
 //Player may specify the D&D 5e rules to include in the narration. or perhaps the DM may want to specify the style of narration.
 const dndRulesDMStyle = "Ensure your narration aligns with D&D 5e fantasy themes, character abilities, and typical role-playing scenarios that the famous DM Matt Mercer would narrate. Always tell the scene based on because the player did something therefore this next challenge (e.g. Combat is very obvious consequence, a new obstacle, a change in circumstances) happen, do not end the narration with how the character is feeling or how readily they feel.";
-const dndRulesCombat = "Narrate this as a dynamic combat scene, focusing on action and character reactions, adhering to D&D 5e combat rules.";
+const dndRulesCombat = "Narrate this as a dynamic combat scene, focusing on action and character reactions, adhering to D&D 5e combat rules. Do NOT narrate the protagonist leaving the current location or the scene ending, narrate the fight in the heat of combat.";
 
 /**
  * Provides general D&D narrative style guidance.
