@@ -428,7 +428,7 @@ const dndRulesCombat = "Narrate this as a dynamic combat scene, focusing on acti
 
 /**
  * Provides general D&D narrative style guidance.
- * @param eventType The type of event triggering narration (e.g., "combat", "general").
+ * @param eventType The type of event triggering narration (e.g., "combat", or else).
  * @returns A string containing general D&D narrative instructions.
  */
 export function getDndNarrationGuidance(eventType: string): string {

@@ -288,7 +288,7 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
             try {
               const generatedBackstory = await this.appBackend!.getNarration(prompt, (token, count) => {
                 this.appUI!.updateProgress("Generating Backstory", "Please wait while your character is going through early life...", count, true);
-              }, 300); // Backstory limit: 300 tokens
+              }, 1024); // Backstory limit: 1024 tokens
 
               finalSettings = { ...newSettings, backstory: generatedBackstory };
               this.appUI!.updateProgress("Backstory Generated", "Your character's history is ready!", -1, false);
@@ -421,7 +421,7 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
     if (this.settings.plotType === "combat" && action) {
       const combatNarration = await this.executeCombatRound(action, context);
       console.log("DEBUG: Combat Narration from executeCombatRound:", combatNarration); // Troubleshoot Combat Narration issues
-      const dndStyleGuidance = getDndNarrationGuidance(eventType);
+      const dndStyleGuidance = getDndNarrationGuidance(this.settings.plotType);
       const consolidatedGuidance = `${dndStyleGuidance}\n\n${combatNarration}`;
       return [consolidatedGuidance];
     }
@@ -510,8 +510,8 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
     }
 
     // 2. Get general D&D style guidance
-    //To-Do: add rules for timing ie combat round is 6 sec, day/night
-    const dndStyleGuidance = getDndNarrationGuidance(eventType);
+    //TODO: add rules for timing ie combat round is 6 sec, day/night
+    const dndStyleGuidance = getDndNarrationGuidance(this.settings.plotType);
 
     // 3. Combine guidance into a string array
     const consolidatedGuidance = `${consequenceGuidance}\n\n${dndStyleGuidance}\n\n${combatNarration}`;
