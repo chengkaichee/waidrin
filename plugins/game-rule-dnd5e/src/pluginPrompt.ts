@@ -168,14 +168,14 @@ export function getBackstory(stats: DnDStats, pc: StoredState): Prompt { //renam
     And the following descriptive guidance from D&D 5e rules:
     ${coreAttributesContent}
 
-    In 300 words provide a high level, narrative guiding description of the character's core attributes, incorporating descriptive interpretations. 
+    In 200 words provide a high level, narrative guiding description of the character's core attributes, incorporating descriptive interpretations. 
     Focus on how these attributes would manifest in the character's personality, physical presence, and abilities. 
     Based on the pattern of the attributes add a couple of backstory to explain the outlier attributes tied to the gender and race during upbringing and the eventual growth based on their level to their class and subclass (if applicable). 
     Provide a current physical description of the character based on their attributes and backstory.
 
     DO NOT repeat the numerical values of the attributes in your description.
     DO NOT include numerical modifiers or numbers in your description.
-    Your entire response must be no more than 300 words. Do not exceed this limit, never mention the word count in your answer.`,
+    Your entire response must be no more than 200 words. Do not exceed this limit, never mention the word count in your answer.`,
   };
 }
 

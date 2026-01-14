@@ -10519,13 +10519,9 @@ var generateDefaultDnDStats = (rpgDiceRoller) => {
     wisdom: rollAttribute(),
     charisma: rollAttribute(),
     hp: 10,
-    // Default starting HP
     hpMax: 10,
-    // Default max HP
     dndLevel: 1,
-    // Default level
     dndExp: 0,
-    // Default experience points
     dndClass: "",
     dndSubclass: "",
     plotType: PlotType.enum.general,
@@ -10533,7 +10529,10 @@ var generateDefaultDnDStats = (rpgDiceRoller) => {
     backstory: ""
   };
   const suggestedClass = suggestDefaultClass(generatedStats);
+  const maxHp = calculateMaxHp(1, generatedStats.constitution, suggestedClass);
   return __spreadProps(__spreadValues({}, generatedStats), {
+    hp: maxHp,
+    hpMax: maxHp,
     dndClass: suggestedClass
     //dndSubclass: suggestedSubclass,
   });
@@ -10636,6 +10635,31 @@ var DnDClassData = {
     "War Magic"
   ]
 };
+var HitDieData = {
+  "Barbarian": 12,
+  "Fighter": 10,
+  "Paladin": 10,
+  "Ranger": 10,
+  "Bard": 8,
+  "Cleric": 8,
+  "Druid": 8,
+  "Monk": 8,
+  "Rogue": 8,
+  "Warlock": 8,
+  "Sorcerer": 6,
+  "Wizard": 6
+};
+function calculateMaxHp(level, constitution, dndClass) {
+  const hitDie = HitDieData[dndClass] || 8;
+  const conMod = getAbilityModifier(constitution);
+  if (level <= 0) return 0;
+  let maxHp = hitDie + conMod;
+  if (level > 1) {
+    const hpPerLevel = Math.floor(hitDie / 2) + 1 + conMod;
+    maxHp += hpPerLevel * (level - 1);
+  }
+  return Math.max(1, maxHp);
+}
 function canCombatantAct(status) {
   return status === "active";
 }
@@ -10885,14 +10909,14 @@ function getBackstory(stats, pc) {
     And the following descriptive guidance from D&D 5e rules:
     ${coreAttributesContent}
 
-    In 300 words provide a high level, narrative guiding description of the character's core attributes, incorporating descriptive interpretations. 
+    In 200 words provide a high level, narrative guiding description of the character's core attributes, incorporating descriptive interpretations. 
     Focus on how these attributes would manifest in the character's personality, physical presence, and abilities. 
     Based on the pattern of the attributes add a couple of backstory to explain the outlier attributes tied to the gender and race during upbringing and the eventual growth based on their level to their class and subclass (if applicable). 
     Provide a current physical description of the character based on their attributes and backstory.
 
     DO NOT repeat the numerical values of the attributes in your description.
     DO NOT include numerical modifiers or numbers in your description.
-    Your entire response must be no more than 300 words. Do not exceed this limit, never mention the word count in your answer.`
+    Your entire response must be no more than 200 words. Do not exceed this limit, never mention the word count in your answer.`
   };
 }
 var coreSkillsAndDifficultyCheckContent = `
@@ -11861,9 +11885,17 @@ var DndStatsCharacterUIPage = ({
     setCurrentSettings(pluginSettings);
   }, [pluginSettings]);
   const handleChange = (key, value) => {
-    setCurrentSettings((prev) => __spreadProps(__spreadValues({}, prev), {
-      [key]: value
-    }));
+    setCurrentSettings((prev) => {
+      const newState = __spreadProps(__spreadValues({}, prev), {
+        [key]: value
+      });
+      if (key === "dndLevel" || key === "dndClass" || key === "constitution") {
+        const newMaxHp = calculateMaxHp(newState.dndLevel, newState.constitution, newState.dndClass);
+        newState.hp = newMaxHp;
+        newState.hpMax = newMaxHp;
+      }
+      return newState;
+    });
   };
   const handleApply = async () => {
     await onSave(currentSettings);
@@ -11991,7 +12023,7 @@ var DndStatsPlugin = class {
               try {
                 const generatedBackstory = await this.appBackend.getNarration(prompt, (token, count) => {
                   this.appUI.updateProgress("Generating Backstory", "Please wait while your character is going through early life...", count, true);
-                }, 300);
+                }, 512);
                 finalSettings = __spreadProps(__spreadValues({}, newSettings), { backstory: generatedBackstory });
                 this.appUI.updateProgress("Backstory Generated", "Your character's history is ready!", -1, false);
                 console.log("DEBUG: Plugin: Backstory Generated.");
@@ -12099,7 +12131,7 @@ var DndStatsPlugin = class {
     if (this.settings.plotType === "combat" && action) {
       const combatNarration2 = await this.executeCombatRound(action, context);
       console.log("DEBUG: Combat Narration from executeCombatRound:", combatNarration2);
-      const dndStyleGuidance2 = getDndNarrationGuidance(eventType);
+      const dndStyleGuidance2 = getDndNarrationGuidance(this.settings.plotType);
       const consolidatedGuidance2 = `${dndStyleGuidance2}
 
 ${combatNarration2}`;
@@ -12163,7 +12195,7 @@ ${combatNarration2}`;
       consequenceGuidance = await this.appBackend.getNarration(internalGuidancePrompt);
       console.log("DEBUG: Plugin: Consequence Guidance provided.", consequenceGuidance);
     }
-    const dndStyleGuidance = getDndNarrationGuidance(eventType);
+    const dndStyleGuidance = getDndNarrationGuidance(this.settings.plotType);
     const consolidatedGuidance = `${consequenceGuidance}
 
 ${dndStyleGuidance}

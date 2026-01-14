@@ -143,10 +143,10 @@ export const generateDefaultDnDStats = (rpgDiceRoller: typeof RpgDiceRoller): Dn
     intelligence: rollAttribute(),
     wisdom: rollAttribute(),
     charisma: rollAttribute(),
-    hp: 10, // Default starting HP
-    hpMax: 10, // Default max HP
-    dndLevel: 1,  // Default level
-    dndExp: 0,    // Default experience points
+    hp: 10,
+    hpMax: 10,
+    dndLevel: 1,
+    dndExp: 0,
     dndClass: "",
     dndSubclass: "",
     plotType: PlotType.enum.general,
@@ -156,9 +156,12 @@ export const generateDefaultDnDStats = (rpgDiceRoller: typeof RpgDiceRoller): Dn
 
   const suggestedClass = suggestDefaultClass(generatedStats);
   //const suggestedSubclass = DnDClassData[suggestedClass]?.[0] || ""; // Pick first subclass if available
+  const maxHp = calculateMaxHp(1, generatedStats.constitution, suggestedClass);
 
   return {
     ...generatedStats,
+    hp: maxHp,
+    hpMax: maxHp,
     dndClass: suggestedClass,
     //dndSubclass: suggestedSubclass,
   };
@@ -266,6 +269,46 @@ export const DnDClassData: DndClassData = {
     "War Magic"
   ]
 };
+
+export const HitDieData: { [key: string]: number } = {
+  "Barbarian": 12,
+  "Fighter": 10,
+  "Paladin": 10,
+  "Ranger": 10,
+  "Bard": 8,
+  "Cleric": 8,
+  "Druid": 8,
+  "Monk": 8,
+  "Rogue": 8,
+  "Warlock": 8,
+  "Sorcerer": 6,
+  "Wizard": 6
+};
+
+/**
+ * Calculates the Max HP based on Level, Constitution, and Class.
+ * Rule: 
+ * Level 1: Hit Die + Con Mod
+ * Level > 1: (Hit Die / 2 + 1) + Con Mod per level above 1
+ */
+export function calculateMaxHp(level: number, constitution: number, dndClass: string): number {
+  const hitDie = HitDieData[dndClass] || 8; // Default to d8 if class not found
+  const conMod = getAbilityModifier(constitution);
+  
+  if (level <= 0) return 0;
+
+  // Level 1 HP
+  let maxHp = hitDie + conMod;
+
+  // Subsequent levels
+  if (level > 1) {
+    const hpPerLevel = Math.floor(hitDie / 2) + 1 + conMod;
+    maxHp += hpPerLevel * (level - 1);
+  }
+
+  // Ensure HP is at least 1 (though 5e technically allows lower if con is very low, usually min 1 rule applies effectively)
+  return Math.max(1, maxHp);
+}
 
 /**
  * Determines if a combatant can take action based on their status.

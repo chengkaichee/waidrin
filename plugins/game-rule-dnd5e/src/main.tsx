@@ -16,7 +16,7 @@ import type { Context } from "@/app/plugins";
 import type { Prompt } from "@/lib/prompts";
 import type * as RadixThemes from '@radix-ui/themes';
 import type { useShallow } from 'zustand/shallow';
-import { DnDStats, generateDefaultDnDStats, DnDClassData, DnDStatsSchema, resolveCheck as getResolveCheck, Combatant, canCombatantAct, CombatAction, CombatActionSchema, CombatRoundActionsSchema, PlotType } from "./pluginData";
+import { DnDStats, generateDefaultDnDStats, DnDClassData, DnDStatsSchema, resolveCheck as getResolveCheck, Combatant, canCombatantAct, CombatAction, CombatActionSchema, CombatRoundActionsSchema, PlotType, calculateMaxHp } from "./pluginData";
 import { getBackstory, modifyProtagonistPromptForDnd, getChecksPrompt, getConsequenceGuidancePrompt, getDndNarrationGuidance, getLocationChangePrompt, getCombatantsPrompt, getPlayerCombatActionPrompt, getCombatRoundActionsPrompt, getCombatRoundNarrationPrompt, assignPlotType } from "./pluginPrompt";
 import { resolveSpell } from "./pluginSpells";
 import { generateEncounter, initEncounterTable } from "./encounterTable";
@@ -70,10 +70,20 @@ const DndStatsCharacterUIPage = ({
   }, [pluginSettings]);
 
   const handleChange = (key: keyof DnDStats, value: string | number) => {
-    setCurrentSettings((prev) => ({
-      ...prev,
-      [key]: value,
-    }));
+    setCurrentSettings((prev) => {
+      const newState = {
+        ...prev,
+        [key]: value,
+      };
+
+      if (key === 'dndLevel' || key === 'dndClass' || key === 'constitution') {
+        const newMaxHp = calculateMaxHp(newState.dndLevel, newState.constitution, newState.dndClass);
+        newState.hp = newMaxHp;
+        newState.hpMax = newMaxHp;
+      }
+
+      return newState;
+    });
   };
 
   const handleApply = async () => {
@@ -288,7 +298,7 @@ export default class DndStatsPlugin implements Plugin, IGameRuleLogic {
             try {
               const generatedBackstory = await this.appBackend!.getNarration(prompt, (token, count) => {
                 this.appUI!.updateProgress("Generating Backstory", "Please wait while your character is going through early life...", count, true);
-              }, 1024); // Backstory limit: 1024 tokens
+              }, 512); // Backstory limit: 512 tokens
 
               finalSettings = { ...newSettings, backstory: generatedBackstory };
               this.appUI!.updateProgress("Backstory Generated", "Your character's history is ready!", -1, false);
